@@ -1,0 +1,187 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "ABSCONS One Digital Platform API",
+    "description": "Comprehensive RESTful API for Abia State College of Nursing Sciences (ABSCONS) — Student Portal, Academic Operations, Results, Bursary/Payments, and Administration.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "ABSCONS ICT & Technical Services",
+      "email": "ict@abscons.edu.ng",
+      "url": "https://abscons.edu.ng"
+    }
+  },
+  "servers": [
+    {
+      "url": "/api",
+      "description": "Local / Production API Gateway"
+    }
+  ],
+  "tags": [
+    { "name": "Auth", "description": "Authentication, JWT tokens, and login" },
+    { "name": "Students", "description": "Student portal operations, profile, courses, and results" },
+    { "name": "Fees & Payments", "description": "Tuition fees, Paystack/Flutterwave gateway, invoices, receipts" },
+    { "name": "Admin", "description": "Administration, student directory, results entry, staff management" },
+    { "name": "Reference", "description": "Campuses, programmes, academic sessions, courses" }
+  ],
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Student / Staff login",
+        "description": "Authenticates a user via matric number or email and returns JWT access and refresh tokens.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["identifier", "password"],
+                "properties": {
+                  "identifier": { "type": "string", "example": "ABSCONS/2025/001" },
+                  "password": { "type": "string", "example": "Password123!" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Login successful with user profile and tokens" },
+          "400": { "description": "Invalid credentials or missing input" }
+        }
+      }
+    },
+    "/students/me": {
+      "get": {
+        "tags": ["Students"],
+        "summary": "Get authenticated student profile",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Student profile with emergency contacts and documents" }
+        }
+      },
+      "patch": {
+        "tags": ["Students"],
+        "summary": "Update student contact info",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Profile updated successfully" }
+        }
+      }
+    },
+    "/students/course-registration": {
+      "get": {
+        "tags": ["Students"],
+        "summary": "Get available and registered courses for current semester",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Course registration data with window status and available units" }
+        }
+      },
+      "post": {
+        "tags": ["Students"],
+        "summary": "Submit course registration",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["courseIds"],
+                "properties": {
+                  "courseIds": { "type": "array", "items": { "type": "integer" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Courses registered successfully" },
+          "403": { "description": "Registration blocked (window closed or fee hold active)" }
+        }
+      }
+    },
+    "/students/course-registration/slip": {
+      "get": {
+        "tags": ["Students"],
+        "summary": "Download / Print Official Course Registration Slip (PDF)",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Print-ready HTML/PDF Course Registration Slip" }
+        }
+      }
+    },
+    "/students/results": {
+      "get": {
+        "tags": ["Students"],
+        "summary": "Get examination results and CGPA summary",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "List of published results with grade points and academic standing" }
+        }
+      }
+    },
+    "/students/fees": {
+      "get": {
+        "tags": ["Fees & Payments"],
+        "summary": "Get fee schedule, payments history, and balance",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Itemized fee breakdown and payment ledger" }
+        }
+      }
+    },
+    "/students/fees/initialize": {
+      "post": {
+        "tags": ["Fees & Payments"],
+        "summary": "Initialize Paystack/Flutterwave transaction",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Transaction reference and public key configuration" }
+        }
+      }
+    },
+    "/students/fees/verify": {
+      "post": {
+        "tags": ["Fees & Payments"],
+        "summary": "Verify and credit online gateway payment",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Payment verified and receipt assigned" }
+        }
+      }
+    },
+    "/students/fees/invoice": {
+      "get": {
+        "tags": ["Fees & Payments"],
+        "summary": "Download / Print Official Fee Invoice (PDF)",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Official print-ready Fee Invoice statement" }
+        }
+      }
+    },
+    "/students/fees/receipt/{paymentId}": {
+      "get": {
+        "tags": ["Fees & Payments"],
+        "summary": "Download / Print Official Payment Receipt (PDF)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "paymentId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Official electronic verified receipt" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}
