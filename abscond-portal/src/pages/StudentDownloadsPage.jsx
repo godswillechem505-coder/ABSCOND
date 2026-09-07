@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ApiClient } from '../auth/ApiClient';
 import { useAuth } from '../auth/useAuth';
+import { useToast } from '../context/useToast';
 
 const CATEGORY_CARDS = [
   { title: 'Academic Handbooks', category: 'Academic', icon: '📚', count: 'Curriculum & Rules' },
@@ -9,8 +10,19 @@ const CATEGORY_CARDS = [
   { title: 'General Guidelines', category: 'General', icon: '📄', count: 'Student Regulations' },
 ];
 
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:4000/api').replace(/\/api$/, '');
+
+const resolveFileUrl = (url) => {
+  if (!url) return '#';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url;
+  }
+  return `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+};
+
 export default function StudentDownloadsPage() {
   const { getAccessToken, refreshAccessToken } = useAuth();
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -24,9 +36,12 @@ export default function StudentDownloadsPage() {
       .then((data) => {
         setDownloads(data.downloads || []);
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => {
+        setError(err.message);
+        toast.error(err.message || 'Failed to load documents.');
+      })
       .finally(() => setLoading(false));
-  }, [getAccessToken, refreshAccessToken]);
+  }, [getAccessToken, refreshAccessToken, toast]);
 
   const filteredDownloads = downloads.filter((d) => {
     const matchCat = selectedCategory === 'All' || d.category?.toLowerCase() === selectedCategory.toLowerCase();
@@ -119,7 +134,8 @@ export default function StudentDownloadsPage() {
                     <td><small>{new Date(doc.createdAt).toLocaleDateString('en-GB')}</small></td>
                     <td>
                       <a
-                        href={doc.fileUrl || '#'}
+                        href={resolveFileUrl(doc.fileUrl)}
+                        download={doc.fileName}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="admin-btn-primary"

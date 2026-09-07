@@ -8,10 +8,13 @@ import {
 } from '../config/permissions.js';
 import { login, me } from '../controllers/authController.js';
 import {
+  deactivateStudentAccount,
   getAdminDashboard,
   getStudentDetail,
   listStudents,
+  resetStudentPassword,
   updateDocumentDecision,
+  updateStudentStatus,
 } from '../controllers/adminController.js';
 import {
   bulkEnterResults,
@@ -89,7 +92,7 @@ import {
   requirePermission,
   requireStaffAccess,
 } from '../middleware/auth.js';
-import { loginRateLimiter } from '../middleware/rateLimiter.js';
+import { adminMutationRateLimiter, loginRateLimiter } from '../middleware/rateLimiter.js';
 
 export const adminRoutes = Router();
 
@@ -124,6 +127,13 @@ adminRoutes.get(
   getAdminDashboard,
 );
 adminRoutes.get(
+  '/dashboard/stats',
+  authenticate,
+  requireStaffAccess,
+  requirePermission(PERMISSIONS.VIEW_STUDENTS),
+  getAdminDashboard,
+);
+adminRoutes.get(
   '/students',
   authenticate,
   requireStaffAccess,
@@ -136,6 +146,33 @@ adminRoutes.get(
   requireStaffAccess,
   requirePermission(PERMISSIONS.VIEW_STUDENTS),
   getStudentDetail,
+);
+// Line 333: Admin account status update (activate, suspend, deactivate)
+adminRoutes.patch(
+  '/students/:studentId/status',
+  authenticate,
+  requireStaffAccess,
+  requirePermission(PERMISSIONS.MANAGE_STUDENTS),
+  adminMutationRateLimiter({ maxRequests: 25 }),
+  updateStudentStatus,
+);
+// Line 333: Admin delete/deactivate student account (soft delete - disables login, preserves records)
+adminRoutes.delete(
+  '/students/:studentId',
+  authenticate,
+  requireStaffAccess,
+  requirePermission(PERMISSIONS.MANAGE_STUDENTS),
+  adminMutationRateLimiter({ maxRequests: 20 }),
+  deactivateStudentAccount,
+);
+// Line 342: Admin reset student password
+adminRoutes.post(
+  '/students/:studentId/reset-password',
+  authenticate,
+  requireStaffAccess,
+  requirePermission(PERMISSIONS.MANAGE_STUDENTS),
+  adminMutationRateLimiter({ maxRequests: 20, message: 'Too many password reset requests. Please wait a moment.' }),
+  resetStudentPassword,
 );
 adminRoutes.patch(
   '/documents/:documentId/decision',
@@ -163,6 +200,7 @@ adminRoutes.post(
   authenticate,
   requireStaffAccess,
   requirePermission(PERMISSIONS.MANAGE_RESULTS),
+  adminMutationRateLimiter({ maxRequests: 15, message: 'Too many bulk result imports. Please wait a moment.' }),
   bulkEnterResults,
 );
 adminRoutes.patch(
@@ -170,6 +208,7 @@ adminRoutes.patch(
   authenticate,
   requireStaffAccess,
   requirePermission(PERMISSIONS.MANAGE_RESULTS),
+  adminMutationRateLimiter({ maxRequests: 30 }),
   setResultPublication,
 );
 adminRoutes.get(
@@ -200,6 +239,7 @@ adminRoutes.post(
   authenticate,
   requireStaffAccess,
   requirePermission(PERMISSIONS.MANAGE_FEES),
+  adminMutationRateLimiter({ maxRequests: 20 }),
   createFeeStructure,
 );
 adminRoutes.patch(
@@ -207,6 +247,7 @@ adminRoutes.patch(
   authenticate,
   requireStaffAccess,
   requirePermission(PERMISSIONS.MANAGE_FEES),
+  adminMutationRateLimiter({ maxRequests: 20 }),
   updateFeeStructure,
 );
 adminRoutes.delete(
@@ -214,6 +255,7 @@ adminRoutes.delete(
   authenticate,
   requireStaffAccess,
   requirePermission(PERMISSIONS.MANAGE_FEES),
+  adminMutationRateLimiter({ maxRequests: 20 }),
   deleteFeeStructure,
 );
 adminRoutes.get(

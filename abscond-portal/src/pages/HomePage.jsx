@@ -1,4 +1,5 @@
 import React from "react";
+import HeroSection from "../components/HeroSection";
 import AboutSection from "../components/AboutSection";
 import AnnouncementsSection from "../components/AnnouncementsSection";
 import CampusesSection from "../components/CampusesSection";
@@ -12,6 +13,7 @@ import CtaBanner from "../components/CtaBanner";
 export default function HomePage() {
   return (
     <>
+      <HeroSection />
       <AboutSection />
       <AnnouncementsSection />
       <CampusesSection />

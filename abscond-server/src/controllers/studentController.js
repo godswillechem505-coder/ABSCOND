@@ -2,6 +2,8 @@ import { Op } from 'sequelize';
 import {
   AcademicSession,
   Announcement,
+  AnnouncementRead,
+  CalendarEntry,
   Campus,
   ClinicalPosting,
   Course,
@@ -13,6 +15,7 @@ import {
   FeeItem,
   FeeStructure,
   NextOfKin,
+  Notification,
   Payment,
   Programme,
   Result,
@@ -20,9 +23,15 @@ import {
   Student,
   User,
 } from '../models/index.js';
+
+import fs from 'fs';
+import path from 'path';
 import { calculateStudentGpaSummary } from '../services/gpaService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { logAuditAction } from '../utils/auditLogger.js';
+import { generateIcsContent } from '../utils/icsGenerator.js';
+import { UPLOADS_DIR } from '../middleware/upload.js';
+
 
 
 const includeProfile = [
@@ -97,6 +106,41 @@ export const updateStudentProfile = asyncHandler(async (req, res) => {
   });
 });
 
+export const updateStudentNotificationPreferences = asyncHandler(async (req, res) => {
+  const student = await Student.findOne({ where: { userId: req.user.id } });
+  if (!student) return res.status(404).json({ message: 'Student profile not found.' });
+
+  const currentPrefs = student.notificationPreferences || {
+    emailAnnouncements: true,
+    smsResults: true,
+    emailReceipts: true,
+    newsletterUpdates: false,
+  };
+
+  const incoming = req.body.notificationPreferences || req.body;
+  const updatedPrefs = {
+    ...currentPrefs,
+    ...(typeof incoming === 'object' && incoming !== null ? incoming : {}),
+  };
+
+  student.notificationPreferences = updatedPrefs;
+  await student.save();
+
+  await logAuditAction({
+    req,
+    action: 'UPDATE_NOTIFICATION_PREFERENCES',
+    resource: 'Student',
+    resourceId: student.id,
+    details: { notificationPreferences: updatedPrefs },
+  });
+
+  return res.json({
+    message: 'Notification preferences updated successfully.',
+    notificationPreferences: updatedPrefs,
+    student,
+  });
+});
+
 export const getStudentDocuments = asyncHandler(async (req, res) => {
   const student = await Student.findOne({ where: { userId: req.user.id } });
   if (!student) return res.status(404).json({ message: 'Student profile not found.' });
@@ -110,14 +154,27 @@ export const getStudentDocuments = asyncHandler(async (req, res) => {
 });
 
 export const uploadDocument = asyncHandler(async (req, res) => {
-  const { type, name, fileUrl, fileName, fileSize, mimeType } = req.body;
-
-  if (!type || !fileUrl || !fileName) {
-    return res.status(400).json({ message: 'Document type, fileUrl, and fileName are required.' });
-  }
-
   const student = await Student.findOne({ where: { userId: req.user.id } });
   if (!student) return res.status(404).json({ message: 'Student profile not found.' });
+
+  let type = req.body.type;
+  let name = req.body.name;
+  let fileUrl = req.body.fileUrl;
+  let fileName = req.body.fileName;
+  let fileSize = req.body.fileSize ? Number(req.body.fileSize) : null;
+  let mimeType = req.body.mimeType || null;
+
+  if (req.file) {
+    fileName = req.file.originalname;
+    fileUrl = req.file.url;
+    fileSize = req.file.size;
+    mimeType = req.file.mimetype;
+    name = name || req.file.originalname;
+  }
+
+  if (!type || !fileUrl || !fileName) {
+    return res.status(400).json({ message: 'Document type and file are required.' });
+  }
 
   const document = await Document.create({
     studentId: student.id,
@@ -150,6 +207,19 @@ export const deleteDocument = asyncHandler(async (req, res) => {
 
   if (document.status !== 'pending') {
     return res.status(403).json({ message: 'Cannot delete a verified or rejected document.' });
+  }
+
+  // Remove file from disk if stored locally
+  if (document.fileUrl && document.fileUrl.startsWith('/uploads/')) {
+    const diskFilename = document.fileUrl.replace(/^\/uploads\//, '');
+    const diskPath = path.join(UPLOADS_DIR, diskFilename);
+    try {
+      if (fs.existsSync(diskPath)) {
+        await fs.promises.unlink(diskPath);
+      }
+    } catch (_err) {
+      // Ignore disk cleanup errors
+    }
   }
 
   await document.destroy();
@@ -186,12 +256,74 @@ export const getCourseRegistrationData = asyncHandler(async (req, res) => {
     include: [{ model: Course, as: 'course' }],
   });
 
+  // Query student's results to evaluate prerequisite fulfillment
+  const studentResults = await Result.findAll({
+    where: {
+      studentId: student.id,
+    },
+  });
+
+  // Attach prerequisiteMet and prerequisiteDetails to each available course
+  const coursesWithPrereqStatus = availableCourses.map((c) => {
+    const plainCourse = c.toJSON ? c.toJSON() : c;
+    if (!plainCourse.prerequisiteCourseId || !plainCourse.prerequisite) {
+      return {
+        ...plainCourse,
+        prerequisiteMet: true,
+        prerequisiteDetails: null,
+      };
+    }
+
+    const prereqResult = studentResults.find(
+      (r) => Number(r.courseId) === Number(plainCourse.prerequisiteCourseId)
+    );
+
+    if (!prereqResult) {
+      return {
+        ...plainCourse,
+        prerequisiteMet: false,
+        prerequisiteDetails: {
+          prerequisiteCourse: plainCourse.prerequisite,
+          reason: 'not_taken',
+          message: `Prerequisite course ${plainCourse.prerequisite.code} (${plainCourse.prerequisite.title}) has not been completed. You must achieve a passing grade before enrolling in ${plainCourse.code}.`,
+        },
+      };
+    }
+
+    const isPassed = prereqResult.grade !== 'F' && Number(prereqResult.score) >= 40;
+    if (!isPassed) {
+      return {
+        ...plainCourse,
+        prerequisiteMet: false,
+        prerequisiteDetails: {
+          prerequisiteCourse: plainCourse.prerequisite,
+          reason: 'failed',
+          grade: prereqResult.grade,
+          score: prereqResult.score,
+          message: `Prerequisite course ${plainCourse.prerequisite.code} was not passed (Recorded Grade: ${prereqResult.grade}, Score: ${prereqResult.score}%). A passing grade (minimum E / 40%) is required prior to enrolling in ${plainCourse.code}.`,
+        },
+      };
+    }
+
+    return {
+      ...plainCourse,
+      prerequisiteMet: true,
+      prerequisiteDetails: {
+        prerequisiteCourse: plainCourse.prerequisite,
+        reason: 'passed',
+        grade: prereqResult.grade,
+        score: prereqResult.score,
+        message: `Prerequisite met (${plainCourse.prerequisite.code} passed with Grade ${prereqResult.grade}).`,
+      },
+    };
+  });
+
   return res.json({
     student,
     currentSession,
     activeSemester,
     windowOpen: activeSemester ? activeSemester.isRegistrationOpen : true,
-    availableCourses,
+    availableCourses: coursesWithPrereqStatus,
     registeredCourses: registrations.map((r) => r.course).filter(Boolean),
     registeredItems: registrations,
   });
@@ -249,6 +381,53 @@ export const registerStudentCourses = asyncHandler(async (req, res) => {
     }
   }
   // --- END FEE HOLD CHECK ---
+
+  // --- LINE 331: Check for unmet prerequisites ---
+  const requestedCourses = await Course.findAll({
+    where: { id: { [Op.in]: courseIds } },
+    include: [{ model: Course, as: 'prerequisite' }],
+  });
+
+  const studentResults = await Result.findAll({
+    where: { studentId: student.id },
+  });
+
+  const blockedPrereqs = [];
+  for (const c of requestedCourses) {
+    if (c.prerequisiteCourseId && c.prerequisite) {
+      const match = studentResults.find((r) => Number(r.courseId) === Number(c.prerequisiteCourseId));
+      const passed = match && match.grade !== 'F' && Number(match.score) >= 40;
+      if (!passed) {
+        blockedPrereqs.push({
+          courseId: c.id,
+          code: c.code,
+          title: c.title,
+          prerequisiteCode: c.prerequisite.code,
+          prerequisiteTitle: c.prerequisite.title,
+          grade: match?.grade || null,
+          score: match?.score || null,
+          reason: match ? 'failed' : 'not_taken',
+        });
+      }
+    }
+  }
+
+  if (blockedPrereqs.length > 0) {
+    const errorDetails = blockedPrereqs
+      .map((b) =>
+        b.reason === 'failed'
+          ? `${b.code} requires passing prerequisite ${b.prerequisiteCode} (your previous grade: ${b.grade || 'F'})`
+          : `${b.code} requires prerequisite ${b.prerequisiteCode} (not yet taken/passed)`
+      )
+      .join('; ');
+
+    return res.status(400).json({
+      message: `Prerequisite requirement not met: ${errorDetails}. Please resolve prerequisites before registering.`,
+      prerequisiteBlocked: true,
+      blockedCourses: blockedPrereqs,
+    });
+  }
+  // --- END PREREQUISITE CHECK ---
 
   const activeSemester = currentSession?.semesters?.find((s) => s.isActive) || currentSession?.semesters?.[0];
 
@@ -1059,15 +1238,78 @@ export const getStudentCalendarData = asyncHandler(async (req, res) => {
     include: [{ model: Semester, as: 'semesters' }],
   });
 
+  const sessionId = currentSession?.id || 1;
+
+  const calendarEntries = await CalendarEntry.findAll({
+    where: {
+      [Op.or]: [
+        { academicSessionId: sessionId },
+        { academicSessionId: null },
+      ],
+      status: 'published',
+    },
+    include: [{ model: Semester, as: 'semester' }],
+    order: [['startDate', 'ASC']],
+  });
+
   const events = await Event.findAll({
     where: { status: 'published' },
     order: [['eventDate', 'ASC']],
   });
 
+  // Dynamic countdown calculations
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const nextExam = calendarEntries.find((e) => e.category === 'examination' && new Date(e.startDate) >= today);
+  const nextRegClose = calendarEntries.find((e) => e.category === 'registration' && e.endDate && new Date(e.endDate) >= today);
+  const nextBreak = calendarEntries.find((e) => e.category === 'break' && new Date(e.startDate) >= today);
+
+  const getDaysRemaining = (targetDate) => {
+    if (!targetDate) return null;
+    const target = new Date(targetDate);
+    target.setHours(0, 0, 0, 0);
+    const diffTime = target.getTime() - today.getTime();
+    return Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+  };
+
+  const countdowns = {
+    daysToExams: nextExam ? getDaysRemaining(nextExam.startDate) : 18,
+    nextExamDate: nextExam?.startDate || '2026-06-15',
+    daysToRegClose: nextRegClose ? getDaysRemaining(nextRegClose.endDate) : 12,
+    regCloseDate: nextRegClose?.endDate || '2026-02-28',
+    daysToBreak: nextBreak ? getDaysRemaining(nextBreak.startDate) : 35,
+    breakDate: nextBreak?.startDate || '2026-07-01',
+  };
+
   return res.json({
     currentSession,
+    calendarEntries,
     events,
+    countdowns,
   });
+});
+
+// --- LINE 41: Download Academic Calendar as RFC 5545 .ICS File ---
+export const downloadCalendarIcs = asyncHandler(async (req, res) => {
+  const currentSession = await AcademicSession.findOne({
+    where: { isCurrent: true },
+  });
+
+  const calendarEntries = await CalendarEntry.findAll({
+    where: { status: 'published' },
+    order: [['startDate', 'ASC']],
+  });
+
+  const icsData = generateIcsContent(calendarEntries, {
+    name: `${currentSession?.name || '2025/2026'} Academic Calendar`,
+    description: 'Abia State College of Nursing Sciences Academic & Examination Schedule',
+  });
+
+  const safeSessionName = (currentSession?.name || '2025-2026').replace(/[^a-zA-Z0-9]/g, '-');
+  res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="abscons-academic-calendar-${safeSessionName}.ics"`);
+  return res.send(icsData);
 });
 
 // --- 5. ANNOUNCEMENTS CONTROLLER ---
@@ -1084,8 +1326,78 @@ export const getStudentAnnouncementsData = asyncHandler(async (req, res) => {
     ],
   });
 
-  return res.json({ announcements });
+  const reads = await AnnouncementRead.findAll({
+    where: { userId: req.user.id },
+  });
+  const readAnnouncementIds = reads.map((r) => r.announcementId);
+
+  return res.json({
+    announcements,
+    readAnnouncementIds,
+  });
 });
+
+export const markAnnouncementAsRead = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const announcementId = parseInt(id, 10);
+
+  const announcement = await Announcement.findByPk(announcementId);
+  if (!announcement) {
+    return res.status(404).json({ message: 'Announcement not found.' });
+  }
+
+  const [record, created] = await AnnouncementRead.findOrCreate({
+    where: {
+      announcementId,
+      userId: req.user.id,
+    },
+    defaults: {
+      announcementId,
+      userId: req.user.id,
+      readAt: new Date(),
+    },
+  });
+
+  return res.json({
+    message: 'Announcement marked as read.',
+    readRecord: record,
+    created,
+  });
+});
+
+export const markAllAnnouncementsAsRead = asyncHandler(async (req, res) => {
+  const announcements = await Announcement.findAll({
+    where: {
+      status: 'published',
+      audience: { [Op.in]: ['all', 'students'] },
+    },
+    attributes: ['id'],
+  });
+
+  const existingReads = await AnnouncementRead.findAll({
+    where: { userId: req.user.id },
+    attributes: ['announcementId'],
+  });
+  const readSet = new Set(existingReads.map((r) => r.announcementId));
+
+  const unreadAnnouncements = announcements.filter((a) => !readSet.has(a.id));
+
+  if (unreadAnnouncements.length > 0) {
+    await AnnouncementRead.bulkCreate(
+      unreadAnnouncements.map((a) => ({
+        announcementId: a.id,
+        userId: req.user.id,
+        readAt: new Date(),
+      }))
+    );
+  }
+
+  return res.json({
+    message: 'All announcements marked as read.',
+    markedCount: unreadAnnouncements.length,
+  });
+});
+
 
 // --- 6. DOWNLOADS CONTROLLER ---
 export const getStudentDownloadsData = asyncHandler(async (req, res) => {
@@ -1140,3 +1452,45 @@ export const getStudentClinicalPosting = asyncHandler(async (req, res) => {
 
   return res.json({ currentPosting: posting || null, allPostings });
 });
+
+// --- 9. NOTIFICATIONS CONTROLLERS ---
+export const getStudentNotifications = asyncHandler(async (req, res) => {
+  const notifications = await Notification.findAll({
+    where: { userId: req.user.id },
+    order: [['createdAt', 'DESC']],
+  });
+
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  return res.json({
+    notifications,
+    unreadCount,
+  });
+});
+
+export const markNotificationAsRead = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const notification = await Notification.findOne({
+    where: { id, userId: req.user.id },
+  });
+
+  if (!notification) {
+    return res.status(404).json({ message: 'Notification not found.' });
+  }
+
+  notification.isRead = true;
+  notification.readAt = new Date();
+  await notification.save();
+
+  return res.json({ message: 'Notification marked as read.', notification });
+});
+
+export const markAllNotificationsAsRead = asyncHandler(async (req, res) => {
+  await Notification.update(
+    { isRead: true, readAt: new Date() },
+    { where: { userId: req.user.id, isRead: false } }
+  );
+
+  return res.json({ message: 'All notifications marked as read.' });
+});
+

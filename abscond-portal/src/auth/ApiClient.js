@@ -8,7 +8,7 @@ export class ApiClient {
       ...options.headers,
     };
 
-    const accessToken = getAccessToken();
+    const accessToken = typeof getAccessToken === "function" ? getAccessToken() : (getAccessToken || null);
     if (accessToken) {
       headers.Authorization = `Bearer ${accessToken}`;
     }

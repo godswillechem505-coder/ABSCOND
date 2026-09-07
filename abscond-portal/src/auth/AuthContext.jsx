@@ -1,22 +1,49 @@
-const initializeAuthState = () => {
-  try {
-    const session = localStorage.getItem("abscons_session");
-    if (session) {
-      const parsed = JSON.parse(session);
-      return { user: parsed.user, permissions: parsed.permissions };
-    }
-  } catch {
-    localStorage.removeItem("abscons_session");
-  }
-  return { user: null, permissions: null };
-};
 import { useCallback, useState, useEffect, useRef } from "react";
 import { AuthContext } from "./authContext";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
 
+const SESSION_KEY = "abscons_session";
+const TOKENS_KEY = "abscons_tokens";
+const PERSIST_KEY = "abscons_persist"; // tracks which storage is active
+
+/**
+ * Resolve the active storage backend.
+ * When "Remember me" is checked we persist to localStorage (survives tab close).
+ * Otherwise we use sessionStorage (cleared when the tab/browser closes).
+ *
+ * On init we check which backend was last used via a tiny localStorage flag.
+ */
+const getActiveStorage = () => {
+  try {
+    return localStorage.getItem(PERSIST_KEY) === "1"
+      ? localStorage
+      : sessionStorage;
+  } catch {
+    return sessionStorage;
+  }
+};
+
+const initializeAuthState = () => {
+  try {
+    // Try localStorage first, then sessionStorage
+    const lsSession = localStorage.getItem(SESSION_KEY);
+    const ssSession = sessionStorage.getItem(SESSION_KEY);
+    const raw = lsSession || ssSession;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { user: parsed.user, permissions: parsed.permissions };
+    }
+  } catch {
+    localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
+  }
+  return { user: null, permissions: null };
+};
+
 export function AuthProvider({ children }) {
-  const { user: initialUser, permissions: initialPermissions } = initializeAuthState();
+  const { user: initialUser, permissions: initialPermissions } =
+    initializeAuthState();
   const [user, setUser] = useState(initialUser);
   const [permissions, setPermissions] = useState(initialPermissions);
   const [loading, setLoading] = useState(false);
@@ -28,8 +55,12 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     setUser(null);
     setPermissions(null);
-    localStorage.removeItem("abscons_session");
-    localStorage.removeItem("abscons_tokens");
+    // Clear from both storages to be safe
+    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(TOKENS_KEY);
+    localStorage.removeItem(PERSIST_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(TOKENS_KEY);
     setError(null);
   }, []);
 
@@ -38,12 +69,24 @@ export function AuthProvider({ children }) {
     logoutRef.current = logout;
   }, [logout]);
 
-  const saveSession = useCallback((sessionData) => {
+  const saveSession = useCallback((sessionData, rememberMe = false) => {
     setUser(sessionData.user);
     setPermissions(sessionData.permissions);
-    localStorage.setItem("abscons_session", JSON.stringify(sessionData));
-    localStorage.setItem(
-      "abscons_tokens",
+
+    // Determine target storage
+    const storage = rememberMe ? localStorage : sessionStorage;
+
+    // Clear the opposite storage so we don't leave stale data
+    const otherStorage = rememberMe ? sessionStorage : localStorage;
+    otherStorage.removeItem(SESSION_KEY);
+    otherStorage.removeItem(TOKENS_KEY);
+
+    // Persist the flag so getActiveStorage() knows where to look on refresh
+    localStorage.setItem(PERSIST_KEY, rememberMe ? "1" : "0");
+
+    storage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+    storage.setItem(
+      TOKENS_KEY,
       JSON.stringify({
         accessToken: sessionData.accessToken,
         refreshToken: sessionData.refreshToken,
@@ -72,7 +115,7 @@ export function AuthProvider({ children }) {
         }
 
         const sessionData = await response.json();
-        saveSession(sessionData);
+        saveSession(sessionData, rememberMe);
         return sessionData;
       } catch (err) {
         setError(err.message);
@@ -92,7 +135,8 @@ export function AuthProvider({ children }) {
 
   const refreshAccessToken = useCallback(async () => {
     try {
-      const tokens = JSON.parse(localStorage.getItem("abscons_tokens") || "{}");
+      const storage = getActiveStorage();
+      const tokens = JSON.parse(storage.getItem(TOKENS_KEY) || "{}");
       if (!tokens.refreshToken) {
         throw new Error("No refresh token available.");
       }
@@ -109,7 +153,7 @@ export function AuthProvider({ children }) {
 
       const { accessToken } = await response.json();
       tokens.accessToken = accessToken;
-      localStorage.setItem("abscons_tokens", JSON.stringify(tokens));
+      storage.setItem(TOKENS_KEY, JSON.stringify(tokens));
       return accessToken;
     } catch (_err) {
       // Use ref to access logout without circular dependency
@@ -121,7 +165,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const getAccessToken = useCallback(() => {
-    const tokens = JSON.parse(localStorage.getItem("abscons_tokens") || "{}");
+    const storage = getActiveStorage();
+    const tokens = JSON.parse(storage.getItem(TOKENS_KEY) || "{}");
     return tokens.accessToken;
   }, []);
 

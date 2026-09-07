@@ -71,4 +71,14 @@ export const Student = sequelize.define('Student', {
     allowNull: false,
     defaultValue: 'active',
   },
+  notificationPreferences: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: {
+      emailAnnouncements: true,
+      smsResults: true,
+      emailReceipts: true,
+      newsletterUpdates: false,
+    },
+  },
 });

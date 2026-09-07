@@ -4,6 +4,8 @@ import { useAuth } from "../auth/useAuth";
 import { ApiClient } from "../auth/ApiClient";
 import { siteConfig } from "../data/homeData";
 import campusBanner from "../assets/hero-campus.jpg";
+import NotificationDropdown from "../components/NotificationDropdown";
+
 
 const portalNavItems = [
   { label: "Dashboard", to: "/portal", end: true },
@@ -111,10 +113,7 @@ export function PortalLayout() {
             </div>
 
             <div className="portal-topbar-actions">
-              <button type="button" aria-label="3 unread notifications">
-                <span aria-hidden="true">!</span>
-                <b>3</b>
-              </button>
+              <NotificationDropdown />
               <button type="button" aria-label="1 unread message">
                 <span aria-hidden="true">?</span>
                 <b>1</b>
@@ -123,6 +122,7 @@ export function PortalLayout() {
                 Logout
               </button>
             </div>
+
           </header>
 
           <main id="portal-main" className="portal-main" tabIndex="-1">

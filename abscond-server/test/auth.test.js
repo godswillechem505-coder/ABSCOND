@@ -3,7 +3,20 @@ import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
 import { STAFF_ROLES, USER_ROLES, PERMISSIONS, hasPermission } from '../src/config/permissions.js';
 
+import { signPasswordResetToken, verifyPasswordResetToken } from '../src/utils/tokens.js';
+
 test('Auth & RBAC Permissions', async (t) => {
+  await t.test('generates and verifies valid password reset token', () => {
+    const user = { id: 'usr-123', email: 'student@abscons.edu.ng' };
+    const token = signPasswordResetToken(user);
+    assert.ok(typeof token === 'string' && token.length > 0);
+
+    const payload = verifyPasswordResetToken(token);
+    assert.equal(payload.sub, 'usr-123');
+    assert.equal(payload.email, 'student@abscons.edu.ng');
+    assert.equal(payload.type, 'reset-password');
+  });
+
   await t.test('verifies password hashing and comparison with bcrypt', async () => {
     const password = 'StudentSecurePassword2026!';
     const salt = await bcrypt.genSalt(10);

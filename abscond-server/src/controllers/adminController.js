@@ -5,10 +5,12 @@ import { logAuditAction } from '../utils/auditLogger.js';
 import {
   AcademicSession,
   Campus,
+  ContactMessage,
   Document,
   FeeStructure,
   Payment,
   Programme,
+  Semester,
   Student,
   User,
 } from '../models/index.js';
@@ -17,17 +19,40 @@ const studentInclude = [
   { model: Campus, as: 'campus', attributes: ['id', 'name', 'slug'] },
   { model: Programme, as: 'programme', attributes: ['id', 'name', 'slug'] },
   { model: Document, as: 'documents' },
+  { model: User, as: 'user', attributes: ['id', 'identifier', 'email', 'status', 'isActive', 'lastLoginAt'] },
 ];
 
 export const getAdminDashboard = asyncHandler(async (_req, res) => {
-  const [totalStudents, activeStudents, pendingDocuments, totalStaff, currentSession] =
-    await Promise.all([
-      Student.count(),
-      Student.count({ where: { status: 'active' } }),
-      Document.count({ where: { status: 'pending' } }),
-      User.count({ where: { role: { [Op.in]: ['staff', 'admin', 'super_admin'] } } }),
-      AcademicSession.findOne({ where: { isCurrent: true } }),
-    ]);
+  const now = new Date();
+
+  const [
+    totalStudents,
+    activeStudents,
+    pendingDocuments,
+    totalStaff,
+    currentSession,
+    unreadContactMessages,
+    openRegistrationWindows,
+    upcomingRegistrationWindows,
+  ] = await Promise.all([
+    Student.count(),
+    Student.count({ where: { status: 'active' } }),
+    Document.count({ where: { status: 'pending' } }),
+    User.count({ where: { role: { [Op.in]: ['staff', 'admin', 'super_admin'] } } }),
+    AcademicSession.findOne({ where: { isCurrent: true } }),
+    ContactMessage.count({ where: { status: 'new' } }),
+    Semester.count({
+      where: {
+        registrationOpensAt: { [Op.lte]: now },
+        registrationClosesAt: { [Op.gte]: now },
+      },
+    }),
+    Semester.count({
+      where: {
+        registrationOpensAt: { [Op.gt]: now },
+      },
+    }),
+  ]);
 
   let outstandingFees = 0;
   if (currentSession) {
@@ -68,9 +93,19 @@ export const getAdminDashboard = asyncHandler(async (_req, res) => {
       pendingDocuments,
       totalStaff,
       outstandingFees,
-      unreadContactMessages: null,
-      upcomingRegistrationWindows: null,
+      unreadContactMessages,
+      openRegistrationWindows,
+      upcomingRegistrationWindows,
     },
+    // Also include top-level stats for convenience
+    totalStudents,
+    activeStudents,
+    pendingDocuments,
+    totalStaff,
+    outstandingFees,
+    unreadContactMessages,
+    openRegistrationWindows,
+    upcomingRegistrationWindows,
   });
 });
 
@@ -160,5 +195,119 @@ export const updateDocumentDecision = asyncHandler(async (req, res) => {
   });
 
   return res.json({ document });
+});
+
+export const updateStudentStatus = asyncHandler(async (req, res) => {
+  const { status, reason = null } = req.body;
+  const allowedStatuses = ['active', 'inactive', 'suspended', 'graduated'];
+
+  if (!status || !allowedStatuses.includes(status)) {
+    return res.status(400).json({
+      message: `Invalid status. Allowed values: ${allowedStatuses.join(', ')}`,
+    });
+  }
+
+  const student = await Student.findByPk(req.params.studentId);
+  if (!student) {
+    return res.status(404).json({ message: 'Student record not found.' });
+  }
+
+  const user = await User.findByPk(student.userId);
+
+  const oldStudentStatus = student.status;
+
+  student.status = status;
+  await student.save();
+
+  if (user) {
+    if (status === 'active') {
+      user.status = 'active';
+      user.isActive = true;
+    } else {
+      user.status = status === 'suspended' ? 'suspended' : 'inactive';
+      user.isActive = false;
+      user.refreshTokenVersion = (user.refreshTokenVersion || 0) + 1;
+    }
+    await user.save();
+  }
+
+  await logAuditAction({
+    req,
+    action: status === 'active' ? 'REACTIVATE_STUDENT' : 'DEACTIVATE_STUDENT',
+    resource: 'Student',
+    resourceId: student.id,
+    details: {
+      studentId: student.id,
+      matricNumber: student.matricNumber,
+      previousStatus: oldStudentStatus,
+      newStatus: status,
+      reason,
+    },
+  });
+
+  const updated = await Student.findByPk(student.id, {
+    include: studentInclude,
+  });
+
+  const actionVerb = status === 'active' ? 'reactivated' : 'deactivated';
+  return res.json({
+    message: `Student account for ${student.firstName} ${student.lastName} (${student.matricNumber}) successfully ${actionVerb}. ${status !== 'active' ? 'Student portal login has been revoked while all academic records remain preserved.' : 'Portal login access restored.'}`,
+    student: updated,
+  });
+});
+
+export const deactivateStudentAccount = asyncHandler(async (req, res) => {
+  req.body.status = 'inactive';
+  return updateStudentStatus(req, res);
+});
+
+export const resetStudentPassword = asyncHandler(async (req, res) => {
+  const student = await Student.findByPk(req.params.studentId, {
+    include: studentInclude,
+  });
+  if (!student) {
+    return res.status(404).json({ message: 'Student not found.' });
+  }
+
+  const user = await User.findByPk(student.userId);
+  if (!user) {
+    return res.status(404).json({ message: 'Associated student user account not found.' });
+  }
+
+  let tempPassword = req.body.newPassword ? String(req.body.newPassword).trim() : '';
+  if (!tempPassword) {
+    // Generate a secure, user-friendly temporary password
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    let randomPart = '';
+    for (let i = 0; i < 6; i++) {
+      randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    tempPassword = `Abscon#${randomPart}`;
+  } else if (tempPassword.length < 6) {
+    return res.status(400).json({ message: 'Password must be at least 6 characters long.' });
+  }
+
+  user.password = tempPassword;
+  user.refreshTokenVersion = (user.refreshTokenVersion || 0) + 1;
+  await user.save();
+
+  await logAuditAction({
+    req,
+    action: 'ADMIN_RESET_STUDENT_PASSWORD',
+    resource: 'Student',
+    resourceId: student.id,
+    details: {
+      studentId: student.id,
+      matricNumber: student.matricNumber,
+      userId: user.id,
+      resetByAdminId: req.user.id,
+    },
+  });
+
+  return res.json({
+    message: `Portal password for ${student.firstName} ${student.lastName} (${student.matricNumber}) has been successfully reset.`,
+    temporaryPassword: tempPassword,
+    student,
+  });
 });
 

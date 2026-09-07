@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ApiClient } from '../auth/ApiClient';
 import { useAuth } from '../auth/useAuth';
+import { useToast } from '../context/useToast';
 
 export default function AdminDownloads() {
+  const toast = useToast();
   const { permissions, getAccessToken, refreshAccessToken } = useAuth();
   const canManage = permissions?.includes('downloads:manage');
 
@@ -60,11 +62,13 @@ export default function AdminDownloads() {
         fileSize: 520000,
       }, {}, getAccessToken, refreshAccessToken);
       setNotice('Document published to library.');
+      toast.success('Document published to library.');
       setShowModal(false);
       setForm({ title: '', description: '', category: 'academic', fileName: '', academicSessionId: '', status: 'published' });
       loadData();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to upload document.');
     }
   };
 
@@ -73,9 +77,11 @@ export default function AdminDownloads() {
     try {
       await ApiClient.delete(`/admin/downloads/${id}`, {}, getAccessToken, refreshAccessToken);
       setNotice('Document removed.');
+      toast.success('Document removed.');
       loadData();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to remove document.');
     }
   };
 

@@ -8,6 +8,8 @@ import { referenceRoutes } from './routes/referenceRoutes.js';
 import { studentRoutes } from './routes/studentRoutes.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 
+import { UPLOADS_DIR } from './middleware/upload.js';
+
 export const app = express();
 
 app.use(
@@ -16,7 +18,8 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json({ limit: '1mb' }));
+app.use('/uploads', express.static(UPLOADS_DIR));
+app.use(express.json({ limit: '10mb' }));
 
 app.get('/api/health', (_req, res) => {
   res.json({

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ApiClient } from '../auth/ApiClient';
 import { useAuth } from '../auth/useAuth';
+import { useToast } from '../context/useToast';
 
 export default function AdminAcademic() {
+  const toast = useToast();
   const { permissions, getAccessToken, refreshAccessToken } = useAuth();
   const canManage = permissions?.includes('courses:manage');
   const canManageWindows = permissions?.includes('course_registration_windows:manage');
@@ -63,7 +65,9 @@ export default function AdminAcademic() {
         setCampuses(camData.campuses || []);
         setSessions(wData.sessions || []);
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => {
+        setError(err.message);
+      })
       .finally(() => setLoading(false));
   };
 
@@ -90,11 +94,13 @@ export default function AdminAcademic() {
     try {
       await ApiClient.post('/admin/academic/courses', courseForm, {}, getAccessToken, refreshAccessToken);
       setNotice('Course created successfully.');
+      toast.success('Course created successfully.');
       setShowCourseModal(false);
       setCourseForm({ code: '', title: '', units: '3', level: '100', semester: 'first', programmeId: '', prerequisiteCourseId: '', type: 'core' });
       fetchData();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to create course.');
     }
   };
 
@@ -103,9 +109,11 @@ export default function AdminAcademic() {
     try {
       await ApiClient.delete(`/admin/academic/courses/${id}`, {}, getAccessToken, refreshAccessToken);
       setNotice('Course deleted.');
+      toast.success('Course deleted.');
       fetchData();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to delete course.');
     }
   };
 
@@ -114,11 +122,13 @@ export default function AdminAcademic() {
     try {
       await ApiClient.post('/admin/academic/programmes', progForm, {}, getAccessToken, refreshAccessToken);
       setNotice('Programme created.');
+      toast.success('Programme created.');
       setShowProgModal(false);
       setProgForm({ name: '', code: '', durationYears: '3', description: '' });
       fetchData();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to create programme.');
     }
   };
 
@@ -127,11 +137,13 @@ export default function AdminAcademic() {
     try {
       await ApiClient.post('/admin/academic/campuses', campusForm, {}, getAccessToken, refreshAccessToken);
       setNotice('Campus created.');
+      toast.success('Campus created.');
       setShowCampusModal(false);
       setCampusForm({ name: '', code: '', city: '', address: '' });
       fetchData();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to create campus.');
     }
   };
 
@@ -139,10 +151,13 @@ export default function AdminAcademic() {
     try {
       const nextActive = !semester.isActive;
       await ApiClient.patch(`/admin/academic/windows/${semester.id}`, { isActive: nextActive }, {}, getAccessToken, refreshAccessToken);
-      setNotice(`Registration window ${nextActive ? 'opened' : 'closed'} for ${semester.name} semester.`);
+      const msg = `Registration window ${nextActive ? 'opened' : 'closed'} for ${semester.name} semester.`;
+      setNotice(msg);
+      toast.success(msg);
       fetchData();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to toggle registration window.');
     }
   };
 

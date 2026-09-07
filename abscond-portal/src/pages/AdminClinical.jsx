@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ApiClient } from '../auth/ApiClient';
 import { useAuth } from '../auth/useAuth';
+import { useToast } from '../context/useToast';
 
 export default function AdminClinical() {
+  const toast = useToast();
   const { permissions, getAccessToken, refreshAccessToken } = useAuth();
   const canManage = permissions?.includes('clinical_postings:manage');
 
@@ -46,10 +48,12 @@ export default function AdminClinical() {
     try {
       await ApiClient.post('/admin/clinical/postings', form, {}, getAccessToken, refreshAccessToken);
       setNotice('Clinical posting assigned successfully.');
+      toast.success('Clinical posting assigned successfully.');
       setShowModal(false);
       loadPostings();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to assign clinical posting.');
     }
   };
 
@@ -58,9 +62,11 @@ export default function AdminClinical() {
     try {
       await ApiClient.delete(`/admin/clinical/postings/${id}`, {}, getAccessToken, refreshAccessToken);
       setNotice('Posting removed.');
+      toast.success('Clinical posting removed.');
       loadPostings();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to remove posting.');
     }
   };
 

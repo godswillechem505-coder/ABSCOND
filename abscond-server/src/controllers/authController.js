@@ -4,7 +4,9 @@ import { AcademicSession, Campus, Programme, Student, User } from '../models/ind
 import { asyncHandler } from '../utils/asyncHandler.js';
 import {
   signAccessToken,
+  signPasswordResetToken,
   signRefreshToken,
+  verifyPasswordResetToken,
   verifyRefreshToken,
 } from '../utils/tokens.js';
 import { clearLoginAttempts } from '../middleware/rateLimiter.js';
@@ -114,17 +116,77 @@ export const me = asyncHandler(async (req, res) => {
 });
 
 export const forgotPassword = asyncHandler(async (req, res) => {
-  const { identifier, email } = req.body;
+  const rawIdentifier = String(req.body.identifier || req.body.email || req.body.matricNumber || '').trim();
 
-  if (!identifier && !email) {
+  if (!rawIdentifier) {
     return res.status(400).json({
-      message: 'Identifier or email is required.',
+      message: 'Matric number or email address is required.',
     });
   }
 
-  return res.status(202).json({
-    message:
-      'If an active account exists, password recovery instructions will be issued by Student Affairs or ICT.',
+  const user = await User.findOne({
+    where: {
+      [Op.or]: [{ identifier: rawIdentifier }, { email: rawIdentifier.toLowerCase() }],
+    },
+  });
+
+  if (!user || !user.isActive) {
+    // Return standard message to avoid enumeration
+    return res.status(200).json({
+      message: 'If an active account exists with those credentials, password reset instructions have been generated.',
+    });
+  }
+
+  const resetToken = signPasswordResetToken(user);
+  const portalBase = process.env.PORTAL_URL || 'http://localhost:5173';
+  const resetUrl = `${portalBase}/reset-password/${resetToken}`;
+
+  console.log(`[AUTH] Password reset requested for user ${user.email}. Reset URL: ${resetUrl}`);
+
+  return res.status(200).json({
+    message: 'Password reset link has been generated. Use the link below to set a new password.',
+    resetToken,
+    resetUrl,
+  });
+});
+
+export const resetPassword = asyncHandler(async (req, res) => {
+  const { token, newPassword } = req.body;
+
+  if (!token || !newPassword) {
+    return res.status(400).json({
+      message: 'Reset token and new password are required.',
+    });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({
+      message: 'Password must be at least 6 characters long.',
+    });
+  }
+
+  let payload;
+  try {
+    payload = verifyPasswordResetToken(token);
+  } catch (err) {
+    return res.status(400).json({
+      message: 'Invalid or expired password reset link. Please request a new one.',
+    });
+  }
+
+  const user = await User.findByPk(payload.sub);
+  if (!user || !user.isActive) {
+    return res.status(404).json({
+      message: 'User account not found or deactivated.',
+    });
+  }
+
+  user.password = newPassword;
+  user.refreshTokenVersion += 1;
+  await user.save();
+
+  return res.status(200).json({
+    message: 'Your password has been successfully reset! You can now log in.',
   });
 });
 
@@ -137,3 +199,4 @@ export const authBootstrap = asyncHandler(async (_req, res) => {
     currentSession,
   });
 });
+

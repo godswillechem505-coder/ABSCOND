@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ApiClient } from '../auth/ApiClient';
 import { useAuth } from '../auth/useAuth';
+import { useToast } from '../context/useToast';
 
 export default function AdminContent() {
+  const toast = useToast();
   const { permissions, getAccessToken, refreshAccessToken } = useAuth();
   const canManage = permissions?.includes('content:manage');
 
@@ -79,11 +81,13 @@ export default function AdminContent() {
     try {
       await ApiClient.post('/admin/content/announcements', annForm, {}, getAccessToken, refreshAccessToken);
       setNotice('Announcement published.');
+      toast.success('Announcement published.');
       setShowAnnModal(false);
       setAnnForm({ title: '', body: '', category: 'Academic', priority: 'medium', isPinned: false, targetAudience: 'all', status: 'published' });
       loadData();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to publish announcement.');
     }
   };
 
@@ -92,9 +96,11 @@ export default function AdminContent() {
     try {
       await ApiClient.delete(`/admin/content/announcements/${id}`, {}, getAccessToken, refreshAccessToken);
       setNotice('Announcement deleted.');
+      toast.success('Announcement deleted.');
       loadData();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to delete announcement.');
     }
   };
 
@@ -103,11 +109,13 @@ export default function AdminContent() {
     try {
       await ApiClient.post('/admin/content/events', eventForm, {}, getAccessToken, refreshAccessToken);
       setNotice('Event created.');
+      toast.success('Event created.');
       setShowEventModal(false);
       setEventForm({ title: '', description: '', location: '', campusId: '', eventDate: new Date().toISOString().slice(0, 10), startTime: '10:00 AM', endTime: '02:00 PM', category: 'Academic', isFeatured: false, status: 'published' });
       loadData();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to create event.');
     }
   };
 
@@ -116,9 +124,11 @@ export default function AdminContent() {
     try {
       await ApiClient.delete(`/admin/content/events/${id}`, {}, getAccessToken, refreshAccessToken);
       setNotice('Event removed.');
+      toast.success('Event removed.');
       loadData();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to delete event.');
     }
   };
 

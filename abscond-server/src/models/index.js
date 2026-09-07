@@ -1,7 +1,9 @@
 import { sequelize } from '../config/database.js';
 import { AcademicSession } from './AcademicSession.js';
 import { Announcement } from './Announcement.js';
+import { AnnouncementRead } from './AnnouncementRead.js';
 import { AuditLog } from './AuditLog.js';
+import { CalendarEntry } from './CalendarEntry.js';
 import { Campus } from './Campus.js';
 import { ClinicalPosting } from './ClinicalPosting.js';
 import { ContactMessage } from './ContactMessage.js';
@@ -15,6 +17,7 @@ import { Faq } from './Faq.js';
 import { FeeItem } from './FeeItem.js';
 import { FeeStructure } from './FeeStructure.js';
 import { NextOfKin } from './NextOfKin.js';
+import { Notification } from './Notification.js';
 import { Payment } from './Payment.js';
 import { Programme } from './Programme.js';
 import { Result } from './Result.js';
@@ -22,9 +25,6 @@ import { ResultHistory } from './ResultHistory.js';
 import { Semester } from './Semester.js';
 import { Student } from './Student.js';
 import { User } from './User.js';
-
-
-
 
 let associationsRegistered = false;
 
@@ -205,6 +205,27 @@ export const initModels = () => {
     foreignKey: 'authorId',
   });
 
+  // Announcement read tracking
+  Announcement.hasMany(AnnouncementRead, {
+    as: 'reads',
+    foreignKey: 'announcementId',
+    onDelete: 'CASCADE',
+  });
+  AnnouncementRead.belongsTo(Announcement, {
+    as: 'announcement',
+    foreignKey: 'announcementId',
+  });
+
+  User.hasMany(AnnouncementRead, {
+    as: 'announcementReads',
+    foreignKey: 'userId',
+    onDelete: 'CASCADE',
+  });
+  AnnouncementRead.belongsTo(User, {
+    as: 'user',
+    foreignKey: 'userId',
+  });
+
   Event.belongsTo(Campus, {
     as: 'campus',
     foreignKey: 'campusId',
@@ -244,23 +265,56 @@ export const initModels = () => {
   Semester.hasMany(CourseRegistration, { as: 'courseRegistrations', foreignKey: 'semesterId' });
   CourseRegistration.belongsTo(Semester, { as: 'semester', foreignKey: 'semesterId' });
 
+  // Notification associations
+  User.hasMany(Notification, {
+    as: 'notifications',
+    foreignKey: 'userId',
+    onDelete: 'CASCADE',
+  });
+  Notification.belongsTo(User, {
+    as: 'user',
+    foreignKey: 'userId',
+  });
+
+  // CalendarEntry associations
+  AcademicSession.hasMany(CalendarEntry, {
+    as: 'calendarEntries',
+    foreignKey: 'academicSessionId',
+    onDelete: 'CASCADE',
+  });
+  CalendarEntry.belongsTo(AcademicSession, {
+    as: 'academicSession',
+    foreignKey: 'academicSessionId',
+  });
+
+  Semester.hasMany(CalendarEntry, {
+    as: 'calendarEntries',
+    foreignKey: 'semesterId',
+    onDelete: 'SET NULL',
+  });
+  CalendarEntry.belongsTo(Semester, {
+    as: 'semester',
+    foreignKey: 'semesterId',
+  });
+
+
   associationsRegistered = true;
 };
-
 
 initModels();
 
 export {
   AcademicSession,
   Announcement,
+  AnnouncementRead,
   AuditLog,
+  CalendarEntry,
   Campus,
   ClinicalPosting,
   ContactMessage,
   Course,
   CourseRegistration,
   Document,
-
   DownloadDocument,
   EmergencyContact,
   Event,
@@ -268,6 +322,7 @@ export {
   FeeItem,
   FeeStructure,
   NextOfKin,
+  Notification,
   Payment,
   Programme,
   Result,
@@ -277,5 +332,7 @@ export {
   User,
   sequelize,
 };
+
+
 
 

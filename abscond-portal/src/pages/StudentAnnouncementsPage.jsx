@@ -15,22 +15,49 @@ export default function StudentAnnouncementsPage() {
 
   useEffect(() => {
     document.title = 'Announcements | ABSCONS Student Portal';
+    let isMounted = true;
+
     ApiClient.get('/students/announcements', {}, getAccessToken, refreshAccessToken)
       .then((data) => {
+        if (!isMounted) return;
         setAnnouncements(data.announcements || []);
+        if (data.readAnnouncementIds && Array.isArray(data.readAnnouncementIds)) {
+          setReadIds(new Set(data.readAnnouncementIds));
+        }
       })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (isMounted) setError(err.message);
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [getAccessToken, refreshAccessToken]);
 
-  const markAsRead = (id) => {
-    setReadIds((prev) => new Set(prev).add(id));
+  const markAsRead = async (id) => {
+    if (!readIds.has(id)) {
+      setReadIds((prev) => new Set(prev).add(id));
+      try {
+        await ApiClient.patch(`/students/announcements/${id}/read`, {}, getAccessToken, refreshAccessToken);
+      } catch (err) {
+        console.error('Failed to persist announcement read status', err);
+      }
+    }
   };
 
-  const markAllRead = () => {
+  const markAllRead = async () => {
     const all = new Set(announcements.map((a) => a.id));
     setReadIds(all);
+    try {
+      await ApiClient.patch('/students/announcements/read-all', {}, getAccessToken, refreshAccessToken);
+    } catch (err) {
+      console.error('Failed to persist mark all announcements read', err);
+    }
   };
+
 
   const filteredAnnouncements = announcements.filter((a) => {
     const isRead = readIds.has(a.id);

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, useMemo } from "react";
 import { ApiClient } from "../auth/ApiClient";
 import { useAuth } from "../auth/useAuth";
+import { useToast } from "../context/useToast";
 
 const FEE_CATEGORIES = [
   { value: "tuition", label: "Tuition Fee" },
@@ -28,6 +29,7 @@ const formatCurrency = (amount) => {
 };
 
 export default function AdminFees() {
+  const toast = useToast();
   const { permissions, getAccessToken, refreshAccessToken } = useAuth();
   const canManage = permissions?.includes("fees:manage");
 
@@ -282,10 +284,12 @@ export default function AdminFees() {
     e.preventDefault();
     if (!structureForm.title.trim()) {
       setError("Please provide a title for the fee structure.");
+      toast.error("Please provide a title for the fee structure.");
       return;
     }
     if (structureForm.items.length === 0) {
       setError("Please add at least one fee component.");
+      toast.error("Please add at least one fee component.");
       return;
     }
 
@@ -302,11 +306,13 @@ export default function AdminFees() {
         refreshAccessToken,
       );
       setNotice("Fee structure created and published successfully.");
+      toast.success("Fee structure created and published successfully.");
       setShowStructureModal(false);
       await loadStructures();
       await loadStats();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || "Failed to create fee structure.");
     } finally {
       setSubmitting(false);
     }
@@ -323,10 +329,12 @@ export default function AdminFees() {
         refreshAccessToken,
       );
       setNotice(`Fee structure status updated to ${nextStatus}.`);
+      toast.success(`Fee structure status updated to ${nextStatus}.`);
       await loadStructures();
       await loadStats();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || "Failed to update fee structure.");
     }
   };
 
@@ -340,10 +348,12 @@ export default function AdminFees() {
         refreshAccessToken,
       );
       setNotice("Fee structure deleted.");
+      toast.success("Fee structure deleted.");
       await loadStructures();
       await loadStats();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || "Failed to delete fee structure.");
     }
   };
 
@@ -378,6 +388,7 @@ export default function AdminFees() {
     e.preventDefault();
     if (!paymentForm.matricNumber.trim() || !paymentForm.amount) {
       setError("Please specify a student matric number and payment amount.");
+      toast.error("Please specify a student matric number and payment amount.");
       return;
     }
 
@@ -394,6 +405,7 @@ export default function AdminFees() {
         refreshAccessToken,
       );
       setNotice(`Payment of ${formatCurrency(paymentForm.amount)} recorded successfully!`);
+      toast.success(`Payment of ${formatCurrency(paymentForm.amount)} recorded successfully!`);
       setSelectedReceipt(res.payment);
       setPaymentForm((prev) => ({
         ...prev,
@@ -408,6 +420,7 @@ export default function AdminFees() {
       await loadStats();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || "Failed to record payment.");
     } finally {
       setSubmitting(false);
     }
@@ -442,8 +455,12 @@ export default function AdminFees() {
         a.remove();
         window.URL.revokeObjectURL(url);
         setNotice("Outstanding balances CSV exported successfully.");
+        toast.success("Outstanding balances CSV exported successfully.");
       })
-      .catch((err) => setError(err.message));
+      .catch((err) => {
+        setError(err.message);
+        toast.error(err.message || "Failed to export CSV.");
+      });
   };
 
   const startPaymentForStudent = (record) => {

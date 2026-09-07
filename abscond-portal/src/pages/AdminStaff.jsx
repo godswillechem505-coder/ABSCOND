@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ApiClient } from '../auth/ApiClient';
 import { useAuth } from '../auth/useAuth';
+import { useToast } from '../context/useToast';
 
 export default function AdminStaff() {
+  const toast = useToast();
   const { user, getAccessToken, refreshAccessToken } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
 
@@ -42,11 +44,13 @@ export default function AdminStaff() {
     try {
       await ApiClient.post('/admin/staff', form, {}, getAccessToken, refreshAccessToken);
       setNotice('Staff account created successfully.');
+      toast.success('Staff account created successfully.');
       setShowModal(false);
       setForm({ email: '', identifier: '', password: '', staffRole: 'registry', role: 'staff' });
       loadStaff();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to create staff account.');
     }
   };
 
@@ -54,10 +58,13 @@ export default function AdminStaff() {
     try {
       const nextStatus = !member.isActive;
       await ApiClient.patch(`/admin/staff/${member.id}`, { isActive: nextStatus }, {}, getAccessToken, refreshAccessToken);
-      setNotice(`Account ${member.email} ${nextStatus ? 'activated' : 'deactivated'}.`);
+      const msg = `Account ${member.email} ${nextStatus ? 'activated' : 'deactivated'}.`;
+      setNotice(msg);
+      toast.success(msg);
       loadStaff();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to update staff status.');
     }
   };
 

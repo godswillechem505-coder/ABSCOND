@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiClient } from "../auth/ApiClient";
 import { useAuth } from "../auth/useAuth";
+import { useToast } from "../context/useToast";
 
 const documentMeta = {
   "o-level-result": {
@@ -137,6 +138,16 @@ const formatFileSize = (value) => {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 };
 
+const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:4000/api").replace(/\/api$/, "");
+
+const resolveFileUrl = (url) => {
+  if (!url) return "#";
+  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
+    return url;
+  }
+  return `${API_BASE}${url.startsWith("/") ? "" : "/"}${url}`;
+};
+
 const getPrimaryContact = (student) =>
   student?.emergencyContacts?.find((contact) => contact.isPrimary) ||
   student?.emergencyContacts?.[0] ||
@@ -233,6 +244,7 @@ function InfoCard({ title, kicker, onEdit, children }) {
 
 export default function StudentProfilePage() {
   const { user, getAccessToken, refreshAccessToken } = useAuth();
+  const toast = useToast();
   const [profile, setProfile] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [isLoading, setIsLoading] = useState(true);
@@ -359,11 +371,13 @@ export default function StudentProfilePage() {
         type: "success",
         message: "Profile updated successfully.",
       });
+      toast.success("Profile updated successfully.");
     } catch (err) {
       setNotice({
         type: "error",
         message: err.message || "Unable to save profile.",
       });
+      toast.error(err.message || "Unable to save profile.");
     } finally {
       setIsSaving(false);
     }
@@ -400,28 +414,30 @@ export default function StudentProfilePage() {
       return;
     }
 
-    const file = uploadForm.file;
-    const fileName = file.name;
-    const safeFileName = fileName.replace(/\s+/g, "-").toLowerCase();
-
     setIsUploading(true);
     setNotice(null);
 
     try {
-      const data = await ApiClient.post(
-        "/students/documents",
-        {
-          type: uploadForm.type,
-          name: uploadForm.name.trim() || documentMeta[uploadForm.type].label,
-          fileUrl: `/documents/${Date.now()}-${safeFileName}`,
-          fileName,
-          fileSize: file.size,
-          mimeType: file.type || "application/octet-stream",
-        },
-        {},
-        getAccessToken,
-        refreshAccessToken,
-      );
+      const formData = new FormData();
+      formData.append("type", uploadForm.type);
+      formData.append("name", uploadForm.name.trim() || documentMeta[uploadForm.type]?.label || "Document");
+      formData.append("file", uploadForm.file);
+
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
+      const token = typeof getAccessToken === "function" ? getAccessToken() : null;
+
+      const response = await fetch(`${apiUrl}/students/documents`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.message || "Unable to upload document.");
+      }
+
+      const data = await response.json();
 
       setProfile((currentProfile) => ({
         ...currentProfile,
@@ -432,11 +448,13 @@ export default function StudentProfilePage() {
         type: "success",
         message: "Document uploaded successfully.",
       });
+      toast.success("Document uploaded successfully.");
     } catch (err) {
       setNotice({
         type: "error",
         message: err.message || "Unable to upload document.",
       });
+      toast.error(err.message || "Unable to upload document.");
     } finally {
       setIsUploading(false);
     }
@@ -469,11 +487,13 @@ export default function StudentProfilePage() {
         type: "success",
         message: "Document deleted successfully.",
       });
+      toast.success("Document deleted successfully.");
     } catch (err) {
       setNotice({
         type: "error",
         message: err.message || "Unable to delete document.",
       });
+      toast.error(err.message || "Unable to delete document.");
     } finally {
       setDeletingDocumentId(null);
     }
@@ -767,7 +787,7 @@ export default function StudentProfilePage() {
                         <div className="document-actions">
                           <a
                             className="document-action view"
-                            href={document.fileUrl}
+                            href={resolveFileUrl(document.fileUrl)}
                             target="_blank"
                             rel="noreferrer"
                           >
@@ -775,8 +795,10 @@ export default function StudentProfilePage() {
                           </a>
                           <a
                             className="document-action download"
-                            href={document.fileUrl}
+                            href={resolveFileUrl(document.fileUrl)}
                             download={document.fileName}
+                            target="_blank"
+                            rel="noreferrer"
                           >
                             Download
                           </a>

@@ -108,7 +108,7 @@ export default function LoginPage() {
               />
               Remember me
             </label>
-            <a href="mailto:students@abscons.edu.ng">Forgot password?</a>
+            <Link to="/forgot-password">Forgot password?</Link>
           </div>
 
           <button

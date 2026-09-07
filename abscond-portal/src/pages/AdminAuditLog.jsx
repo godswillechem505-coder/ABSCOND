@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ApiClient } from '../auth/ApiClient';
 import { useAuth } from '../auth/useAuth';
+import { useToast } from '../context/useToast';
 
 export default function AdminAuditLog() {
+  const toast = useToast();
   const { getAccessToken, refreshAccessToken } = useAuth();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -14,7 +16,10 @@ export default function AdminAuditLog() {
     setError(null);
     ApiClient.get('/admin/audit-logs?limit=100', {}, getAccessToken, refreshAccessToken)
       .then((data) => setLogs(data.logs || []))
-      .catch((err) => setError(err.message))
+      .catch((err) => {
+        setError(err.message);
+        toast.error(err.message || 'Failed to load audit logs.');
+      })
       .finally(() => setLoading(false));
   };
 

@@ -4,6 +4,7 @@ import {
   AcademicSession,
   Announcement,
   AuditLog,
+  CalendarEntry,
   Campus,
   ClinicalPosting,
   ContactMessage,
@@ -16,6 +17,7 @@ import {
   FeeItem,
   FeeStructure,
   NextOfKin,
+  Notification,
   Payment,
   Programme,
   Result,
@@ -23,6 +25,7 @@ import {
   Student,
   User,
 } from '../models/index.js';
+
 
 
 
@@ -809,6 +812,321 @@ const seedResults = async ({ currentSession }) => {
   }
 };
 
+const seedCalendarEntries = async ({ currentSession }) => {
+  const semesters = await Semester.findAll({
+    where: { academicSessionId: currentSession.id },
+    order: [['number', 'ASC']],
+  });
+
+  const firstSemester = semesters.find((s) => s.number === 1) || semesters[0];
+  const secondSemester = semesters.find((s) => s.number === 2) || semesters[1];
+
+  const calendarItems = [
+    // --- 1st Semester Entries ---
+    {
+      title: 'Portal Course Registration & Fee Payment Window Opens',
+      description: 'Online registration of courses and tuition fee installment clearance for all returning and freshman students across all campuses.',
+      category: 'registration',
+      startDate: '2025-10-15',
+      endDate: '2025-11-15',
+      startTime: '08:00',
+      endTime: '23:59',
+      location: 'Student Online Portal',
+      targetLevel: 'all',
+      isHoliday: false,
+      academicSessionId: currentSession.id,
+      semesterId: firstSemester?.id,
+    },
+    {
+      title: 'Freshmen Orientation & Induction Week',
+      description: 'Comprehensive orientation programme for newly admitted Basic Nursing and Midwifery students.',
+      category: 'general',
+      startDate: '2025-10-20',
+      endDate: '2025-10-24',
+      startTime: '09:00',
+      endTime: '15:00',
+      location: 'Auditorium, Umuahia Main Campus',
+      targetLevel: '100',
+      isHoliday: false,
+      academicSessionId: currentSession.id,
+      semesterId: firstSemester?.id,
+    },
+    {
+      title: 'Commencement of 1st Semester Lectures',
+      description: 'Formal start of classroom instruction, anatomy practicals, and foundational nursing science courses.',
+      category: 'lectures',
+      startDate: '2025-10-27',
+      endDate: '2026-02-13',
+      startTime: '08:00',
+      endTime: '17:00',
+      location: 'All Campuses (Aba, Amachara, Umuahia, Abiriba)',
+      targetLevel: 'all',
+      isHoliday: false,
+      academicSessionId: currentSession.id,
+      semesterId: firstSemester?.id,
+    },
+    {
+      title: 'Matriculation Ceremony for 2025/2026 Set',
+      description: 'Official matriculation and capping ceremony for all admitted nursing & midwifery students.',
+      category: 'matriculation',
+      startDate: '2025-11-28',
+      endDate: '2025-11-28',
+      startTime: '10:00',
+      endTime: '14:00',
+      location: 'Convocation Arena, Umuahia Campus',
+      targetLevel: '100',
+      isHoliday: false,
+      academicSessionId: currentSession.id,
+      semesterId: firstSemester?.id,
+    },
+    {
+      title: '1st Continuous Assessment (CA) Test Week',
+      description: 'Mid-term continuous assessments and clinical skill station evaluations.',
+      category: 'assessment',
+      startDate: '2025-12-15',
+      endDate: '2025-12-19',
+      startTime: '09:00',
+      endTime: '16:00',
+      location: 'Designated Examination Halls',
+      targetLevel: 'all',
+      isHoliday: false,
+      academicSessionId: currentSession.id,
+      semesterId: firstSemester?.id,
+    },
+    {
+      title: 'Christmas & New Year Holiday Break',
+      description: 'Statutory institutional break for students and academic staff.',
+      category: 'break',
+      startDate: '2025-12-22',
+      endDate: '2026-01-04',
+      startTime: '00:00',
+      endTime: '23:59',
+      location: 'All Campuses',
+      targetLevel: 'all',
+      isHoliday: true,
+      academicSessionId: currentSession.id,
+      semesterId: firstSemester?.id,
+    },
+    {
+      title: 'Resumption of Lectures & CA 2 Practical Tests',
+      description: 'Resumption of lectures following holiday break and commencement of 2nd continuous assessment.',
+      category: 'lectures',
+      startDate: '2026-01-05',
+      endDate: '2026-02-13',
+      startTime: '08:00',
+      endTime: '17:00',
+      location: 'All Lecture Rooms & Labs',
+      targetLevel: 'all',
+      isHoliday: false,
+      academicSessionId: currentSession.id,
+      semesterId: firstSemester?.id,
+    },
+    {
+      title: 'Clinical Posting Block 1 (Hospital & PHC Rotations)',
+      description: 'Mandatory clinical ward posting at Abia State University Teaching Hospital (ABSUTH) and Federal Medical Centre Umuahia.',
+      category: 'clinical',
+      startDate: '2026-01-12',
+      endDate: '2026-02-27',
+      startTime: '07:30',
+      endTime: '16:30',
+      location: 'ABSUTH Aba & FMC Umuahia Wards',
+      targetLevel: '200,300',
+      isHoliday: false,
+      academicSessionId: currentSession.id,
+      semesterId: firstSemester?.id,
+    },
+    {
+      title: 'Late Course Registration Deadline & Portal Closes',
+      description: 'Final closure of portal registration for 1st semester. Penalty fees apply after this date.',
+      category: 'registration',
+      startDate: '2026-02-28',
+      endDate: '2026-02-28',
+      startTime: '23:59',
+      endTime: '23:59',
+      location: 'Online Portal',
+      targetLevel: 'all',
+      isHoliday: false,
+      academicSessionId: currentSession.id,
+      semesterId: firstSemester?.id,
+    },
+    {
+      title: 'Revision & OSCE Practical Demonstration Week',
+      description: 'Intensive revision lectures, tutorial consultations, and OSCE practical rehearsal for upcoming semester exams.',
+      category: 'revision',
+      startDate: '2026-03-02',
+      endDate: '2026-03-06',
+      startTime: '09:00',
+      endTime: '16:00',
+      location: 'All Campuses',
+      targetLevel: 'all',
+      isHoliday: false,
+      academicSessionId: currentSession.id,
+      semesterId: firstSemester?.id,
+    },
+    {
+      title: '1st Semester Examinations (Written & Practical OSCE)',
+      description: 'Semester theoretical examinations and Objective Structured Clinical Examinations (OSCE).',
+      category: 'examination',
+      startDate: '2026-03-09',
+      endDate: '2026-03-27',
+      startTime: '08:30',
+      endTime: '17:00',
+      location: 'College Examination Halls',
+      targetLevel: 'all',
+      isHoliday: false,
+      academicSessionId: currentSession.id,
+      semesterId: firstSemester?.id,
+    },
+    {
+      title: '1st Semester Vacation & Inter-Semester Break',
+      description: 'Three weeks vacation for students; grading and results compilation by Academic Board.',
+      category: 'break',
+      startDate: '2026-03-30',
+      endDate: '2026-04-19',
+      startTime: '00:00',
+      endTime: '23:59',
+      location: 'All Campuses',
+      targetLevel: 'all',
+      isHoliday: true,
+      academicSessionId: currentSession.id,
+      semesterId: firstSemester?.id,
+    },
+
+    // --- 2nd Semester Entries ---
+    {
+      title: 'Commencement of 2nd Semester Lectures & Registration',
+      description: 'Beginning of second semester academic activities and course enrollments.',
+      category: 'lectures',
+      startDate: '2026-04-20',
+      endDate: '2026-07-24',
+      startTime: '08:00',
+      endTime: '17:00',
+      location: 'All Campuses',
+      targetLevel: 'all',
+      isHoliday: false,
+      academicSessionId: currentSession.id,
+      semesterId: secondSemester?.id,
+    },
+    {
+      title: 'Clinical Posting Block 2 (Maternity & Paediatric Ward Rotations)',
+      description: 'Specialized clinical postings in Labor Wards, Neonatal ICU, and Community Health Outreach centres.',
+      category: 'clinical',
+      startDate: '2026-05-04',
+      endDate: '2026-06-19',
+      startTime: '07:30',
+      endTime: '16:00',
+      location: 'General Hospital Aba & FMC Umuahia',
+      targetLevel: '200,300',
+      isHoliday: false,
+      academicSessionId: currentSession.id,
+      semesterId: secondSemester?.id,
+    },
+    {
+      title: 'Final Qualifying Professional Examinations & Semester Exams',
+      description: 'Nursing & Midwifery Council qualifying mock exams and 2nd Semester college examinations.',
+      category: 'examination',
+      startDate: '2026-06-15',
+      endDate: '2026-07-03',
+      startTime: '08:30',
+      endTime: '17:00',
+      location: 'College Examination Centers',
+      targetLevel: 'all',
+      isHoliday: false,
+      academicSessionId: currentSession.id,
+      semesterId: secondSemester?.id,
+    },
+    {
+      title: 'Long Vacation & Annual Semester Break',
+      description: 'End of 2025/2026 academic session; preparation for 2026/2027 admissions.',
+      category: 'break',
+      startDate: '2026-07-06',
+      endDate: '2026-09-04',
+      startTime: '00:00',
+      endTime: '23:59',
+      location: 'All Campuses',
+      targetLevel: 'all',
+      isHoliday: true,
+      academicSessionId: currentSession.id,
+      semesterId: secondSemester?.id,
+    },
+  ];
+
+  for (const item of calendarItems) {
+    await findOrCreateByUnique(
+      CalendarEntry,
+      {
+        title: item.title,
+        academicSessionId: item.academicSessionId,
+      },
+      item
+    );
+  }
+};
+
+const seedNotifications = async () => {
+  const users = await User.findAll({
+    where: { role: 'student' },
+  });
+
+  if (users.length === 0) return;
+
+  const demoNotifications = [
+    {
+      type: 'result',
+      title: '1st Semester Results Approved & Published',
+      message: 'Your First Semester examination results for 2025/2026 have been approved by the Academic Board and released to your portal.',
+      link: '/portal/results',
+      isRead: false,
+    },
+    {
+      type: 'fee',
+      title: 'Session Tuition Fee Invoice Available',
+      message: 'Official session fee breakdown and e-invoice for the 2025/2026 academic session has been generated by the Bursary Department.',
+      link: '/portal/fees',
+      isRead: false,
+    },
+    {
+      type: 'academic',
+      title: 'Online Course Registration Window Active',
+      message: 'Course registration for the current semester is ongoing. Please confirm your course selections and unit totals before the deadline.',
+      link: '/portal/course-registration',
+      isRead: true,
+      readAt: new Date(Date.now() - 3600 * 24 * 1000),
+    },
+    {
+      type: 'clinical',
+      title: 'Clinical Posting Duty Roster Assigned',
+      message: 'Your hospital ward posting assignment at Federal Medical Centre Umuahia has been published by the Clinical Training Unit.',
+      link: '/portal/calendar',
+      isRead: false,
+    },
+    {
+      type: 'announcement',
+      title: 'Updated College Academic Calendar Available',
+      message: 'The official 2025/2026 academic calendar with updated examination dates and OSCE schedule has been published.',
+      link: '/portal/calendar',
+      isRead: true,
+      readAt: new Date(Date.now() - 3600 * 48 * 1000),
+    },
+  ];
+
+  for (const user of users) {
+    for (const notif of demoNotifications) {
+      await findOrCreateByUnique(
+        Notification,
+        {
+          userId: user.id,
+          title: notif.title,
+        },
+        {
+          ...notif,
+          userId: user.id,
+        }
+      );
+    }
+  }
+};
+
 const seed = async () => {
   await connectDB();
   await syncDatabase();
@@ -821,6 +1139,8 @@ const seed = async () => {
   await seedUsers({ campuses, programmes, currentSession });
   await seedFees({ programmes, currentSession });
   await seedResults({ currentSession });
+  await seedCalendarEntries({ currentSession });
+  await seedNotifications();
   await seedClinicalPostings();
   await seedAnnouncementsAndEvents({ campuses });
   await seedDownloads({ currentSession });
@@ -831,7 +1151,6 @@ const seed = async () => {
   console.log('Seed data ready.');
 };
 
-
 seed()
   .catch((error) => {
     console.error('Seeding failed:', error);
@@ -840,5 +1159,6 @@ seed()
   .finally(async () => {
     await sequelize.close();
   });
+
 
 

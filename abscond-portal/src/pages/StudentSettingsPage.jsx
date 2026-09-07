@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { ApiClient } from '../auth/ApiClient';
 import { useAuth } from '../auth/useAuth';
+import { useToast } from '../context/useToast';
 
 export default function StudentSettingsPage() {
   const { getAccessToken, refreshAccessToken } = useAuth();
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
 
   const [error, setError] = useState(null);
@@ -15,7 +17,14 @@ export default function StudentSettingsPage() {
   // Form states
   const [personalForm, setPersonalForm] = useState({ phone: '', address: '' });
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [notifForm, setNotifForm] = useState({
+    emailAnnouncements: true,
+    smsResults: true,
+    emailReceipts: true,
+    newsletterUpdates: false,
+  });
   const [submitting, setSubmitting] = useState(false);
+  const [savingNotif, setSavingNotif] = useState(false);
 
   useEffect(() => {
     document.title = 'Account Settings | ABSCONS Student Portal';
@@ -27,11 +36,22 @@ export default function StudentSettingsPage() {
             phone: data.student.phone || '',
             address: data.student.address || '',
           });
+          if (data.student.notificationPreferences) {
+            setNotifForm({
+              emailAnnouncements: data.student.notificationPreferences.emailAnnouncements ?? true,
+              smsResults: data.student.notificationPreferences.smsResults ?? true,
+              emailReceipts: data.student.notificationPreferences.emailReceipts ?? true,
+              newsletterUpdates: data.student.notificationPreferences.newsletterUpdates ?? false,
+            });
+          }
         }
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => {
+        setError(err.message);
+        toast.error(err.message || 'Failed to load profile settings.');
+      })
       .finally(() => setLoading(false));
-  }, [getAccessToken, refreshAccessToken]);
+  }, [getAccessToken, refreshAccessToken, toast]);
 
   const handleUpdatePersonal = async (e) => {
     e.preventDefault();
@@ -41,10 +61,13 @@ export default function StudentSettingsPage() {
 
     try {
       const res = await ApiClient.patch('/students/me', personalForm, {}, getAccessToken, refreshAccessToken);
-      setNotice(res.message || 'Personal details updated successfully!');
+      const msg = res.message || 'Personal details updated successfully!';
+      setNotice(msg);
+      toast.success(msg);
       if (res.student) setStudent(res.student);
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to update personal details.');
     } finally {
       setSubmitting(false);
     }
@@ -53,7 +76,9 @@ export default function StudentSettingsPage() {
   const handleUpdatePassword = async (e) => {
     e.preventDefault();
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setError('New password and confirm password do not match.');
+      const msg = 'New password and confirm password do not match.';
+      setError(msg);
+      toast.error(msg);
       return;
     }
 
@@ -72,12 +97,41 @@ export default function StudentSettingsPage() {
         getAccessToken,
         refreshAccessToken
       );
-      setNotice(res.message || 'Password changed successfully!');
+      const msg = res.message || 'Password changed successfully!';
+      setNotice(msg);
+      toast.success(msg);
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to change password.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleUpdateNotifications = async (e) => {
+    e.preventDefault();
+    setSavingNotif(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const res = await ApiClient.patch(
+        '/students/me/notification-preferences',
+        { notificationPreferences: notifForm },
+        {},
+        getAccessToken,
+        refreshAccessToken
+      );
+      const msg = res.message || 'Notification preferences saved successfully!';
+      setNotice(msg);
+      toast.success(msg);
+      if (res.student) setStudent(res.student);
+    } catch (err) {
+      setError(err.message);
+      toast.error(err.message || 'Failed to update notification preferences.');
+    } finally {
+      setSavingNotif(false);
     }
   };
 
@@ -233,29 +287,82 @@ export default function StudentSettingsPage() {
                   {submitting ? 'Updating Password...' : 'Update Password →'}
                 </button>
               </div>
+
+              {/* Account Deletion / Deactivation Policy Callout */}
+              <div className="span-full" style={{ marginTop: '20px', padding: '16px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                  <span style={{ fontSize: '18px' }}>ℹ️</span>
+                  <div>
+                    <strong style={{ display: 'block', color: '#334155', fontSize: '13px', marginBottom: '4px' }}>
+                      Institutional Account Policy Notice
+                    </strong>
+                    <p style={{ margin: 0, color: '#64748b', fontSize: '12px', lineHeight: '1.5' }}>
+                      In compliance with Nursing & Midwifery Council standards and Registry archives, student accounts cannot be self-deleted. Academic transcripts, matriculation records, and examination scores are permanent records. Account deactivation or status suspension can only be initiated by authorized College Administrators.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </form>
           )}
 
           {/* TAB 3: Notifications */}
           {activeTab === 'notifications' && (
-            <div style={{ maxWidth: '600px' }}>
+            <form onSubmit={handleUpdateNotifications} style={{ maxWidth: '600px' }}>
               <h3>Notification & Email Alerts</h3>
-              <p style={{ color: '#64748b' }}>Configure how you receive academic dispatches and Bursary receipt notifications.</p>
+              <p style={{ color: '#64748b' }}>Configure how you receive academic circulars, exam score alerts, and Bursary receipts.</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '20px' }}>
-                <label style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  <input type="checkbox" defaultChecked />
-                  <span>Email alert on new official announcements & circulars</span>
+                <label style={{ display: 'flex', gap: '12px', alignItems: 'center', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={notifForm.emailAnnouncements}
+                    onChange={(e) => setNotifForm({ ...notifForm, emailAnnouncements: e.target.checked })}
+                  />
+                  <div>
+                    <strong style={{ display: 'block', fontSize: '14px' }}>Official Announcements & Circulars</strong>
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>Receive prompt email dispatches from Academic Affairs & Registry</span>
+                  </div>
                 </label>
-                <label style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  <input type="checkbox" defaultChecked />
-                  <span>SMS alert for examination results publishing</span>
+                <label style={{ display: 'flex', gap: '12px', alignItems: 'center', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={notifForm.smsResults}
+                    onChange={(e) => setNotifForm({ ...notifForm, smsResults: e.target.checked })}
+                  />
+                  <div>
+                    <strong style={{ display: 'block', fontSize: '14px' }}>SMS Result Alerts</strong>
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>Instant SMS notification once semester examination results are released</span>
+                  </div>
                 </label>
-                <label style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  <input type="checkbox" defaultChecked />
-                  <span>Email receipt on fee payments verified by Bursary</span>
+                <label style={{ display: 'flex', gap: '12px', alignItems: 'center', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={notifForm.emailReceipts}
+                    onChange={(e) => setNotifForm({ ...notifForm, emailReceipts: e.target.checked })}
+                  />
+                  <div>
+                    <strong style={{ display: 'block', fontSize: '14px' }}>Fee Payment & Bursary Receipts</strong>
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>Automated payment clearance receipts and PDF download links</span>
+                  </div>
+                </label>
+                <label style={{ display: 'flex', gap: '12px', alignItems: 'center', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={notifForm.newsletterUpdates}
+                    onChange={(e) => setNotifForm({ ...notifForm, newsletterUpdates: e.target.checked })}
+                  />
+                  <div>
+                    <strong style={{ display: 'block', fontSize: '14px' }}>Campus Events & Newsletter</strong>
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>Updates on clinical posting cycles, matriculation, and seminars</span>
+                  </div>
                 </label>
               </div>
-            </div>
+
+              <div style={{ marginTop: '24px' }}>
+                <button type="submit" className="admin-btn-primary" disabled={savingNotif}>
+                  {savingNotif ? 'Saving Preferences...' : 'Save Notification Preferences →'}
+                </button>
+              </div>
+            </form>
           )}
 
           {/* TAB 4: Help & Support */}

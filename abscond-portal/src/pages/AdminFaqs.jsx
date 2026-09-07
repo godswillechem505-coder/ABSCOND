@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ApiClient } from '../auth/ApiClient';
 import { useAuth } from '../auth/useAuth';
+import { useToast } from '../context/useToast';
 
 export default function AdminFaqs() {
+  const toast = useToast();
   const { permissions, getAccessToken, refreshAccessToken } = useAuth();
   const canManage = permissions?.includes('faqs:manage');
 
@@ -42,11 +44,13 @@ export default function AdminFaqs() {
     try {
       await ApiClient.post('/admin/faqs', form, {}, getAccessToken, refreshAccessToken);
       setNotice('FAQ item created.');
+      toast.success('FAQ item created.');
       setShowModal(false);
       setForm({ question: '', answer: '', category: 'general', sortOrder: '0', isPublished: true });
       loadFaqs();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to create FAQ item.');
     }
   };
 
@@ -55,9 +59,11 @@ export default function AdminFaqs() {
     try {
       await ApiClient.delete(`/admin/faqs/${id}`, {}, getAccessToken, refreshAccessToken);
       setNotice('FAQ deleted.');
+      toast.success('FAQ deleted.');
       loadFaqs();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to delete FAQ item.');
     }
   };
 

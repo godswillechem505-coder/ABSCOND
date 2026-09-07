@@ -51,6 +51,311 @@
 }
 
 /* ==========================================================================
+   HERO SECTION
+   ========================================================================== */
+
+.hero-section {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+
+/* --- Background carousel --- */
+.hero-bg-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.hero-bg-slide {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 0.8s ease-in-out;
+  transform: scale(1.04);
+  animation: heroKenBurns 9s ease-in-out infinite alternate;
+}
+
+.hero-bg-slide.active {
+  opacity: 1;
+}
+
+@keyframes heroKenBurns {
+  from { transform: scale(1.0); }
+  to   { transform: scale(1.06); }
+}
+
+/* Gradient overlay — dark at bottom, semi-dark at top */
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    175deg,
+    rgba(0, 17, 51, 0.55) 0%,
+    rgba(0, 30, 80, 0.72) 50%,
+    rgba(0, 10, 40, 0.90) 100%
+  );
+}
+
+/* --- Content layer --- */
+.hero-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  min-height: calc(100vh - 90px);
+  padding-bottom: 64px;
+  padding-top: 120px;
+  gap: 32px;
+}
+
+.hero-text-block {
+  max-width: 700px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  animation: heroFadeUp 0.9s ease both;
+}
+
+@keyframes heroFadeUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Eyebrow label */
+.hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.hero-eyebrow-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #38bdf8;
+  animation: heroPulse 2s ease-in-out infinite;
+}
+
+@keyframes heroPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.4); }
+}
+
+/* Main heading */
+.hero-heading {
+  font-family: "Outfit", "Inter", sans-serif;
+  font-size: clamp(36px, 5.5vw, 68px);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -1.5px;
+  color: #ffffff;
+  margin: 0;
+}
+
+.hero-heading-accent {
+  color: #38bdf8;
+}
+
+/* Tagline */
+.hero-tagline {
+  font-size: clamp(15px, 1.6vw, 18px);
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.6;
+  max-width: 520px;
+  margin: 0;
+}
+
+/* --- CTA Buttons --- */
+.hero-cta-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.hero-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 28px;
+  background: #0047b3;
+  color: #ffffff;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  letter-spacing: 0.01em;
+  transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+  box-shadow: 0 4px 18px rgba(0, 71, 179, 0.5);
+}
+
+.hero-btn-primary:hover {
+  background: #003a99;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 71, 179, 0.6);
+}
+
+.hero-btn-primary:active {
+  transform: translateY(0);
+}
+
+.hero-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 24px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  backdrop-filter: blur(6px);
+  transition: background 0.2s, border-color 0.2s, transform 0.15s;
+}
+
+.hero-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.6);
+  transform: translateY(-2px);
+}
+
+/* --- Slide indicators --- */
+.hero-slide-indicators {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.hero-indicator {
+  width: 28px;
+  height: 4px;
+  border-radius: 4px;
+  border: none;
+  background: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  padding: 0;
+  transition: width 0.35s, background 0.35s;
+}
+
+.hero-indicator.active {
+  width: 52px;
+  background: #38bdf8;
+}
+
+/* --- Stats bar --- */
+.hero-stats-bar {
+  position: relative;
+  z-index: 2;
+  background: rgba(0, 20, 60, 0.72);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hero-stats-list {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hero-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 20px 24px;
+  flex: 1;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hero-stat-item:last-child {
+  border-right: none;
+}
+
+.hero-stat-value {
+  font-family: "Outfit", "Inter", sans-serif;
+  font-size: 26px;
+  font-weight: 800;
+  color: #38bdf8;
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+
+.hero-stat-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .hero-content {
+    padding-bottom: 40px;
+  }
+
+  .hero-cta-group {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .hero-btn-primary,
+  .hero-btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .hero-stats-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .hero-stat-item {
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .hero-stat-item:nth-child(2),
+  .hero-stat-item:last-child {
+    border-right: none;
+  }
+
+  .hero-stat-item:nth-child(3),
+  .hero-stat-item:last-child {
+    border-bottom: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-stat-value {
+    font-size: 20px;
+  }
+}
+
+/* ==========================================================================
    1. HEADER (ABSCONS HEADER.png)
    ========================================================================== */
 .abscons-header {
@@ -2150,6 +2455,22 @@
   font-size: 12px;
   padding: 5px 9px;
   text-transform: capitalize;
+}
+.admin-status-tag.active {
+  background: #dcfce7;
+  color: #15803d;
+}
+.admin-status-tag.inactive {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+.admin-status-tag.suspended {
+  background: #fef3c7;
+  color: #b45309;
+}
+.admin-status-tag.graduated {
+  background: #e0f2fe;
+  color: #0369a1;
 }
 .admin-detail-list {
   display: grid;
@@ -5078,6 +5399,171 @@
   margin-left: 6px;
 }
 
+.course-item-row.prereq-blocked {
+  background: #fffbeb;
+  border-color: #fde68a;
+  cursor: pointer;
+}
+
+.course-item-row.prereq-blocked:hover {
+  background: #fef3c7;
+  border-color: #f59e0b;
+}
+
+.prereq-blocked-badge {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  color: #dc2626;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 8px;
+  padding: 2px 6px;
+}
+
+.prereq-indicator {
+  align-items: center;
+  border-radius: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 10px;
+}
+
+.prereq-indicator.blocked {
+  background: #fef2f2;
+  border-left: 3px solid #ef4444;
+  color: #991b1b;
+}
+
+.prereq-indicator.met {
+  background: #f0fdf4;
+  border-left: 3px solid #22c55e;
+  color: #166534;
+}
+
+.prereq-status-note {
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+.btn-view-prereq-details {
+  background: #ffffff;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  color: #b91c1c;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: auto;
+  padding: 3px 8px;
+  transition: all 0.15s ease;
+}
+
+.btn-view-prereq-details:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+
+.status-pill.blocked {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* Modal prerequisite styling */
+.prereq-modal-card {
+  max-width: 580px;
+  width: 90%;
+}
+
+.prereq-target-course-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+}
+
+.prereq-box-label {
+  color: #64748b;
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.prereq-course-title-line {
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.prereq-meta-tags {
+  display: flex;
+  gap: 8px;
+}
+
+.prereq-requirement-box {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  padding: 16px;
+}
+
+.prereq-box-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.prereq-state-badge {
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  text-transform: uppercase;
+}
+
+.prereq-state-badge.failed {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.prereq-state-badge.missing {
+  background: #f59e0b;
+  color: #ffffff;
+}
+
+.prereq-result-details {
+  border-top: 1px dashed #fca5a5;
+  font-size: 13px;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.prereq-note-text {
+  color: #7f1d1d;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.prereq-guidance-callout {
+  background: #f0f9ff;
+  border-left: 3px solid #0284c7;
+  border-radius: 4px;
+  color: #0369a1;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 12px 14px;
+}
+
 .prereq-warning {
   color: #c2410c;
   font-size: 12px;
@@ -5852,6 +6338,20 @@ textarea[aria-invalid="true"] {
 .toast-close-btn:hover {
   color: #0f172a;
 }
+
+/* ==========================================================================
+   ADMIN RESULTS CSV BULK UPLOAD & REPORT
+   ========================================================================== */
+.admin-csv-dropzone.drag-active {
+  border-color: #2563eb !important;
+  background-color: #eff6ff !important;
+  transform: scale(1.005);
+}
+
+.admin-import-report {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
 
 
 

@@ -136,11 +136,15 @@ export const bulkEnterResults = asyncHandler(async (req, res) => {
       headers.map((header, valueIndex) => [header, values[valueIndex]]),
     );
     try {
-      imported.push(
-        await saveResult({ input, userId: req.user.id, action: 'updated' }),
-      );
+      const saved = await saveResult({ input, userId: req.user.id, action: 'updated' });
+      imported.push(saved);
     } catch (error) {
-      errors.push({ row: index + 2, message: error.message });
+      errors.push({
+        row: index + 2,
+        matricNumber: input.matricnumber || 'N/A',
+        courseCode: input.coursecode || 'N/A',
+        message: error.message,
+      });
     }
   }
 
@@ -153,7 +157,13 @@ export const bulkEnterResults = asyncHandler(async (req, res) => {
 
   return res
     .status(errors.length ? 207 : 201)
-    .json({ imported: imported.length, errors });
+    .json({
+      message: `Bulk import completed: ${imported.length} result(s) imported, ${errors.length} error(s).`,
+      totalProcessed: lines.length,
+      imported: imported.length,
+      failed: errors.length,
+      errors,
+    });
 });
 
 export const setResultPublication = asyncHandler(async (req, res) => {

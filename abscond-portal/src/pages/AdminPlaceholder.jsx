@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { ApiClient } from "../auth/ApiClient";
 import { useAuth } from "../auth/useAuth";
+import { useToast } from "../context/useToast";
 import { siteConfig } from "../data/homeData";
 
 const adminProperties = [
@@ -147,16 +148,21 @@ function AdminDashboard() {
         {[
           ["Total students", metrics?.totalStudents ?? "-"],
           ["Active students", metrics?.activeStudents ?? "-"],
-          ["Pending documents", metrics?.pendingDocuments ?? "-"],
+          ["Pending documents", metrics?.pendingDocuments ?? "0"],
           ["Staff accounts", metrics?.totalStaff ?? "-"],
-          ["Outstanding fees", metrics?.outstandingFees ?? "Not configured"],
           [
-            "Unread contact messages",
-            metrics?.unreadContactMessages ?? "Not configured",
+            "Outstanding fees",
+            metrics?.outstandingFees !== undefined && metrics?.outstandingFees !== null
+              ? `₦${Number(metrics.outstandingFees).toLocaleString()}`
+              : "-",
           ],
           [
-            "Upcoming registration windows",
-            metrics?.upcomingRegistrationWindows ?? "Not configured",
+            "Unread contact messages",
+            metrics?.unreadContactMessages ?? "0",
+          ],
+          [
+            "Open registration windows",
+            metrics?.openRegistrationWindows ?? metrics?.upcomingRegistrationWindows ?? "0",
           ],
         ].map(([label, value]) => (
           <article className="admin-metric-card" key={label}>
@@ -210,6 +216,7 @@ function AdminDashboard() {
 }
 
 export function AdminStudentDirectory() {
+  const toast = useToast();
   const { permissions, getAccessToken, refreshAccessToken } = useAuth();
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -218,8 +225,16 @@ export function AdminStudentDirectory() {
   const [isLoading, setIsLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [decisionLoading, setDecisionLoading] = useState(null);
+  const [statusModal, setStatusModal] = useState(null); // { action: 'deactivate' | 'reactivate', student }
+  const [statusReason, setStatusReason] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
+  const [resetModal, setResetModal] = useState(null); // student object or null
+  const [resetForm, setResetForm] = useState({ newPassword: '', autoGenerate: true });
+  const [resetResult, setResetResult] = useState(null); // { temporaryPassword, message }
+  const [resetLoading, setResetLoading] = useState(false);
   const [error, setError] = useState(null);
   const canVerifyDocuments = permissions?.includes("documents:verify");
+  const canManageStudents = permissions?.includes("students:manage") || permissions?.includes("students:view") || permissions?.includes("staff:manage");
 
   useEffect(() => {
     const params = new URLSearchParams({ limit: "50" });
@@ -277,11 +292,63 @@ export function AdminStudentDirectory() {
           document.id === documentId ? data.document : document,
         ),
       }));
+      toast.success(`Document ${nextStatus === 'approved' ? 'approved' : 'rejected'} successfully.`);
       setError(null);
     } catch (requestError) {
       setError(requestError.message);
+      toast.error(requestError.message || 'Failed to update document status.');
     } finally {
       setDecisionLoading(null);
+    }
+  };
+
+  const handleUpdateStudentStatus = async (targetStatus) => {
+    if (!statusModal?.student) return;
+    setActionLoading(true);
+    try {
+      const res = await ApiClient.patch(
+        `/admin/students/${statusModal.student.id}/status`,
+        { status: targetStatus, reason: statusReason },
+        {},
+        getAccessToken,
+        refreshAccessToken,
+      );
+      toast.success(res.message || `Student account status updated to ${targetStatus}.`);
+      setSelectedStudent(res.student || { ...statusModal.student, status: targetStatus });
+      setStudents((prev) =>
+        prev.map((s) => (s.id === statusModal.student.id ? { ...s, status: targetStatus } : s))
+      );
+      setStatusModal(null);
+      setStatusReason("");
+    } catch (err) {
+      toast.error(err.message || 'Failed to update student account status.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e?.preventDefault();
+    if (!resetModal) return;
+    setResetLoading(true);
+    try {
+      const payload = resetForm.autoGenerate ? {} : { newPassword: resetForm.newPassword };
+      const res = await ApiClient.post(
+        `/admin/students/${resetModal.id}/reset-password`,
+        payload,
+        {},
+        getAccessToken,
+        refreshAccessToken,
+      );
+      setResetResult({
+        temporaryPassword: res.temporaryPassword,
+        message: res.message,
+      });
+      toast.success(res.message || 'Student password reset successfully!');
+    } catch (err) {
+      toast.error(err.message || 'Failed to reset student password.');
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -416,15 +483,335 @@ export function AdminStudentDirectory() {
                 ))}
                 {!selectedStudent.documents?.length && <p>No documents submitted.</p>}
               </div>
+
+              {/* Account Security & Access Control Panel */}
+              <div style={{ marginTop: '24px', padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <strong style={{ display: 'block', fontSize: '13px', color: '#1e293b' }}>
+                      Portal Login & Access Control:{' '}
+                      <span style={{ color: selectedStudent.status === 'active' ? '#16a34a' : '#dc2626' }}>
+                        {selectedStudent.status === 'active' ? 'Active (Login Permitted)' : `${selectedStudent.status?.toUpperCase()} (Login Revoked)`}
+                      </span>
+                    </strong>
+                    <span style={{ fontSize: '12px', color: '#64748b' }}>
+                      {selectedStudent.status === 'active'
+                        ? 'Deactivating revokes student portal login while permanently preserving all academic records in database.'
+                        : 'Student portal login is locked. All examination grades, payments, and archives remain intact.'}
+                    </span>
+                  </div>
+                  {canManageStudents && (
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        style={{
+                          background: '#0284c7',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '6px',
+                          padding: '8px 14px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => {
+                          setResetModal(selectedStudent);
+                          setResetForm({ newPassword: '', autoGenerate: true });
+                          setResetResult(null);
+                        }}
+                      >
+                        🔑 Reset Password
+                      </button>
+                      {selectedStudent.status === 'active' ? (
+                        <button
+                          type="button"
+                          style={{
+                            background: '#dc2626',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            padding: '8px 14px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => setStatusModal({ action: 'deactivate', student: selectedStudent })}
+                        >
+                          🗑 Deactivate / Delete Account
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          style={{
+                            background: '#16a34a',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            padding: '8px 14px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => setStatusModal({ action: 'reactivate', student: selectedStudent })}
+                        >
+                          ✓ Reactivate Student Account
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             </>
           )}
         </article>
       </section>
+
+      {/* Student Account Status / Deactivate Modal */}
+      {statusModal && (
+        <div className="admin-modal-overlay" role="dialog" onClick={() => !actionLoading && setStatusModal(null)}>
+          <div className="admin-modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '540px' }}>
+            <div className="admin-modal-header" style={{ borderBottom: '1px solid #fee2e2', background: statusModal.action === 'deactivate' ? '#fff1f2' : '#f0fdf4' }}>
+              <h2>
+                {statusModal.action === 'deactivate' ? '⚠️ Deactivate Student Account' : '✓ Reactivate Student Account'}
+              </h2>
+              <button
+                type="button"
+                className="admin-modal-close"
+                disabled={actionLoading}
+                onClick={() => setStatusModal(null)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="admin-modal-body" style={{ padding: '20px' }}>
+              {statusModal.action === 'deactivate' ? (
+                <>
+                  <p style={{ color: '#991b1b', fontSize: '14px', lineHeight: '1.5', marginTop: 0 }}>
+                    Are you sure you want to deactivate and disable login for{' '}
+                    <strong>{statusModal.student.firstName} {statusModal.student.lastName}</strong> ({statusModal.student.matricNumber})?
+                  </p>
+                  <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '12px', color: '#475569', lineHeight: '1.6', marginBottom: '16px' }}>
+                    🛡️ <strong>Institutional Archive Guarantee:</strong>
+                    <br />
+                    • The student will immediately be blocked from logging into the portal.
+                    <br />
+                    • Active sessions and refresh tokens will be invalidated.
+                    <br />
+                    • <strong>All records remain intact:</strong> matriculation data, results, course registrations, documents, and bursary payment records will be preserved in full for official transcripts.
+                  </div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                    Reason for Deactivation / Closure (Optional):
+                    <textarea
+                      rows="2"
+                      style={{ width: '100%', marginTop: '4px', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                      placeholder="e.g. Voluntary withdrawal, administrative suspension, transfer to another institution..."
+                      value={statusReason}
+                      onChange={(e) => setStatusReason(e.target.value)}
+                    />
+                  </label>
+                </>
+              ) : (
+                <>
+                  <p style={{ color: '#166534', fontSize: '14px', lineHeight: '1.5', marginTop: 0 }}>
+                    Reactivate student portal login for{' '}
+                    <strong>{statusModal.student.firstName} {statusModal.student.lastName}</strong> ({statusModal.student.matricNumber})?
+                  </p>
+                  <p style={{ fontSize: '13px', color: '#64748b', lineHeight: '1.5' }}>
+                    The student account will return to <strong>ACTIVE</strong> status and the student will regain access to registration, result viewing, and fee portal services.
+                  </p>
+                </>
+              )}
+            </div>
+            <div className="admin-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '14px 20px', background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+              <button
+                type="button"
+                className="admin-btn-secondary"
+                disabled={actionLoading}
+                onClick={() => setStatusModal(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                style={{
+                  background: statusModal.action === 'deactivate' ? '#dc2626' : '#16a34a',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '8px 16px',
+                  fontWeight: 600,
+                  cursor: actionLoading ? 'not-allowed' : 'pointer',
+                }}
+                disabled={actionLoading}
+                onClick={() => handleUpdateStudentStatus(statusModal.action === 'deactivate' ? 'inactive' : 'active')}
+              >
+                {actionLoading
+                  ? 'Processing...'
+                  : statusModal.action === 'deactivate'
+                  ? 'Confirm Deactivation'
+                  : 'Confirm Reactivation'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Student Password Reset Modal */}
+      {resetModal && (
+        <div className="admin-modal-overlay" role="dialog" onClick={() => !resetLoading && setResetModal(null)}>
+          <div className="admin-modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <div className="admin-modal-header" style={{ borderBottom: '1px solid #e0f2fe', background: '#f0f9ff' }}>
+              <h2>🔑 Reset Student Portal Password</h2>
+              <button
+                type="button"
+                className="admin-modal-close"
+                disabled={resetLoading}
+                onClick={() => setResetModal(null)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="admin-modal-body" style={{ padding: '20px' }}>
+              <div style={{ marginBottom: '16px', padding: '12px 14px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                <strong style={{ display: 'block', fontSize: '14px', color: '#0f172a' }}>
+                  {resetModal.firstName} {resetModal.lastName}
+                </strong>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>
+                  Matric: <b>{resetModal.matricNumber}</b> | Program: {resetModal.programme?.name || 'Nursing'}
+                </span>
+              </div>
+
+              {!resetResult ? (
+                <form onSubmit={handleResetPassword}>
+                  <p style={{ fontSize: '13px', color: '#475569', lineHeight: '1.5', marginTop: 0 }}>
+                    Select password generation method. Resetting the password will terminate any active student sessions immediately.
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', margin: '16px 0' }}>
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'center', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+                      <input
+                        type="radio"
+                        name="passwordMode"
+                        checked={resetForm.autoGenerate}
+                        onChange={() => setResetForm({ ...resetForm, autoGenerate: true })}
+                      />
+                      <span>Auto-generate secure temporary password (Recommended)</span>
+                    </label>
+
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'center', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+                      <input
+                        type="radio"
+                        name="passwordMode"
+                        checked={!resetForm.autoGenerate}
+                        onChange={() => setResetForm({ ...resetForm, autoGenerate: false })}
+                      />
+                      <span>Set custom temporary password manually</span>
+                    </label>
+                  </div>
+
+                  {!resetForm.autoGenerate && (
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                        Custom Temporary Password (min 6 characters):
+                        <input
+                          type="text"
+                          required
+                          minLength={6}
+                          style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px', fontSize: '13px' }}
+                          value={resetForm.newPassword}
+                          onChange={(e) => setResetForm({ ...resetForm, newPassword: e.target.value })}
+                          placeholder="e.g. Abscon#2026"
+                        />
+                      </label>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+                    <button
+                      type="button"
+                      className="admin-btn-secondary"
+                      disabled={resetLoading}
+                      onClick={() => setResetModal(null)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      style={{
+                        background: '#0284c7',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        padding: '8px 16px',
+                        fontWeight: 600,
+                        cursor: resetLoading ? 'not-allowed' : 'pointer',
+                      }}
+                      disabled={resetLoading}
+                    >
+                      {resetLoading ? 'Resetting...' : 'Confirm & Reset Password'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div>
+                  <div style={{ padding: '16px', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #a7f3d0', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#065f46', fontWeight: 700, fontSize: '14px', marginBottom: '8px' }}>
+                      ✓ Password Reset Successful
+                    </div>
+                    <p style={{ margin: 0, fontSize: '12px', color: '#047857', lineHeight: '1.5' }}>
+                      The student's portal password has been updated. Provide the temporary password below to the student.
+                    </p>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #0284c7', textAlign: 'center', margin: '16px 0' }}>
+                    <span style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
+                      New Temporary Password
+                    </span>
+                    <code style={{ fontSize: '20px', fontWeight: 800, color: '#0369a1', letterSpacing: '1px' }}>
+                      {resetResult.temporaryPassword}
+                    </code>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '16px' }}>
+                    <button
+                      type="button"
+                      style={{
+                        background: '#0284c7',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        padding: '8px 16px',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                      onClick={() => {
+                        navigator.clipboard.writeText(resetResult.temporaryPassword);
+                        toast.success('Temporary password copied to clipboard!');
+                      }}
+                    >
+                      📋 Copy Password
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-btn-secondary"
+                      onClick={() => setResetModal(null)}
+                    >
+                      Done & Close
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
 
 export function AdminResults() {
+  const toast = useToast();
   const { permissions, getAccessToken, refreshAccessToken } = useAuth();
   const [results, setResults] = useState([]);
   const [form, setForm] = useState({
@@ -437,11 +824,64 @@ export function AdminResults() {
   const [csv, setCsv] = useState(
     "matricNumber,courseCode,sessionName,semester,score\nABSCONS/2025/001,NUR101,2025/2026,first,78",
   );
+  const [importReport, setImportReport] = useState(null); // { message, totalProcessed, imported, failed, errors }
+  const [dragActive, setDragActive] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState("");
   const [history, setHistory] = useState(null);
   const [notice, setNotice] = useState(null);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const canManage = permissions?.includes("results:manage");
+
+  const handleFileDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer?.files && e.dataTransfer.files[0]) {
+      processCsvFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleFileSelect = (e) => {
+    if (e.target?.files && e.target.files[0]) {
+      processCsvFile(e.target.files[0]);
+    }
+  };
+
+  const processCsvFile = (file) => {
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      toast.error('Please upload a valid .csv file.');
+      return;
+    }
+    setUploadedFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const content = evt.target.result;
+      setCsv(content);
+      const rowCount = content.split(/\r?\n/).filter(Boolean).length - 1;
+      toast.info(`Loaded ${file.name} (${Math.max(0, rowCount)} data rows detected). Click 'Import CSV' to submit.`);
+    };
+    reader.readAsText(file);
+  };
+
+  const downloadSampleCsv = () => {
+    const sampleContent =
+      "matricNumber,courseCode,sessionName,semester,score\n" +
+      "ABSCONS/2025/001,NUR101,2025/2026,first,78.5\n" +
+      "ABSCONS/2025/002,NUR101,2025/2026,first,65.0\n" +
+      "ABSCONS/2025/003,MID101,2025/2026,first,82.0\n" +
+      "ABSCONS/2025/004,NUR102,2025/2026,second,58.0";
+    const blob = new Blob([sampleContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'sample_results_import_template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success('Sample results CSV template downloaded.');
+  };
 
   const loadResults = async () => {
 
@@ -490,9 +930,11 @@ export function AdminResults() {
         refreshAccessToken,
       );
       setNotice("Result saved as draft.");
+      toast.success("Result saved as draft.");
       await loadResults();
     } catch (requestError) {
       setError(requestError.message);
+      toast.error(requestError.message || 'Failed to save result.');
     } finally {
       setSaving(false);
     }
@@ -503,6 +945,7 @@ export function AdminResults() {
     setSaving(true);
     setError(null);
     setNotice(null);
+    setImportReport(null);
     try {
       const response = await ApiClient.post(
         "/admin/results/bulk",
@@ -511,29 +954,34 @@ export function AdminResults() {
         getAccessToken,
         refreshAccessToken,
       );
-      setNotice(
-        `${response.imported} result(s) imported${response.errors.length ? `; ${response.errors.length} row(s) failed.` : "."}`,
-      );
+      setImportReport(response);
+      const msg = `${response.imported} result(s) imported${response.errors?.length ? `; ${response.errors.length} row(s) failed.` : "."}`;
+      setNotice(msg);
+      toast.success(msg);
       await loadResults();
     } catch (requestError) {
       setError(requestError.message);
+      toast.error(requestError.message || 'Failed to import results.');
     } finally {
       setSaving(false);
     }
   };
 
   const togglePublication = async (result) => {
+    const publishing = result.status !== "published";
     try {
       await ApiClient.patch(
         `/admin/results/${result.id}/publication`,
-        { published: result.status !== "published" },
+        { published: publishing },
         {},
         getAccessToken,
         refreshAccessToken,
       );
+      toast.success(`Result ${publishing ? 'published' : 'unpublished'} successfully.`);
       await loadResults();
     } catch (requestError) {
       setError(requestError.message);
+      toast.error(requestError.message || 'Failed to update publication status.');
     }
   };
 
@@ -622,19 +1070,135 @@ export function AdminResults() {
             </button>
           </form>
           <form className="admin-panel admin-result-form" onSubmit={importCsv}>
-            <h2>Bulk CSV upload</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <h2 style={{ margin: 0 }}>Bulk CSV Upload</h2>
+              <button
+                type="button"
+                style={{
+                  background: 'none',
+                  border: '1px solid #0284c7',
+                  color: '#0284c7',
+                  borderRadius: '4px',
+                  padding: '4px 10px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+                onClick={downloadSampleCsv}
+              >
+                📥 Download Template (.csv)
+              </button>
+            </div>
             <p className="admin-form-help">
-              Required columns: matricNumber, courseCode, sessionName, semester, score
+              Columns: <code>matricNumber, courseCode, sessionName, semester, score</code>
             </p>
-            <textarea
-              value={csv}
-              onChange={(event) => setCsv(event.target.value)}
-              rows="8"
-              required
-            />
+
+            {/* Drag & Drop File Upload Zone */}
+            <div
+              className={`admin-csv-dropzone ${dragActive ? 'drag-active' : ''}`}
+              onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+              onDragLeave={(e) => { e.preventDefault(); setDragActive(false); }}
+              onDrop={handleFileDrop}
+              style={{
+                border: `2px dashed ${dragActive ? '#0284c7' : '#cbd5e1'}`,
+                background: dragActive ? '#f0f9ff' : '#f8fafc',
+                borderRadius: '8px',
+                padding: '20px',
+                textAlign: 'center',
+                cursor: 'pointer',
+                marginBottom: '12px',
+                transition: 'all 0.15s ease',
+              }}
+              onClick={() => document.getElementById('results-csv-file-input')?.click()}
+            >
+              <input
+                type="file"
+                id="results-csv-file-input"
+                accept=".csv"
+                style={{ display: 'none' }}
+                onChange={handleFileSelect}
+              />
+              <span style={{ fontSize: '28px', display: 'block', marginBottom: '6px' }}>📊</span>
+              <strong style={{ display: 'block', fontSize: '13px', color: '#1e293b' }}>
+                {uploadedFileName ? `Selected: ${uploadedFileName}` : 'Drag & Drop Results CSV File Here'}
+              </strong>
+              <span style={{ fontSize: '12px', color: '#64748b' }}>
+                or click to browse your computer (.csv)
+              </span>
+            </div>
+
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+              CSV Content Preview / Manual Input:
+              <textarea
+                value={csv}
+                onChange={(event) => setCsv(event.target.value)}
+                rows="6"
+                style={{ width: '100%', fontFamily: 'monospace', fontSize: '12px', marginTop: '4px' }}
+                required
+              />
+            </label>
+
             <button className="login-submit" type="submit" disabled={saving}>
-              {saving ? "Importing..." : "Import CSV"}
+              {saving ? "Importing..." : `Import Results (${Math.max(0, csv.split(/\r?\n/).filter(Boolean).length - 1)} Rows) →`}
             </button>
+
+            {/* Import Summary Report */}
+            {importReport && (
+              <div
+                className="admin-import-report"
+                style={{
+                  marginTop: '16px',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  background: importReport.failed > 0 ? '#fff1f2' : '#f0fdf4',
+                  border: `1px solid ${importReport.failed > 0 ? '#fecaca' : '#bbf7d0'}`,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <strong style={{ fontSize: '14px', color: importReport.failed > 0 ? '#991b1b' : '#166534' }}>
+                    {importReport.failed > 0 ? '⚠️ Import Completed with Warnings' : '✓ Bulk Import Successful'}
+                  </strong>
+                  <button
+                    type="button"
+                    style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '12px' }}
+                    onClick={() => setImportReport(null)}
+                  >
+                    ✕ Dismiss
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', gap: '16px', fontSize: '13px', marginBottom: importReport.errors?.length ? '12px' : '0' }}>
+                  <span>Processed: <b>{importReport.totalProcessed}</b></span>
+                  <span style={{ color: '#16a34a' }}>Imported/Updated: <b>{importReport.imported}</b></span>
+                  <span style={{ color: importReport.failed > 0 ? '#dc2626' : '#64748b' }}>Failed: <b>{importReport.failed}</b></span>
+                </div>
+
+                {importReport.errors && importReport.errors.length > 0 && (
+                  <div style={{ marginTop: '10px', maxHeight: '180px', overflowY: 'auto', background: '#ffffff', borderRadius: '6px', border: '1px solid #fee2e2' }}>
+                    <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: '#fef2f2', borderBottom: '1px solid #fee2e2', textAlign: 'left' }}>
+                          <th style={{ padding: '6px 8px' }}>Row</th>
+                          <th style={{ padding: '6px 8px' }}>Matric #</th>
+                          <th style={{ padding: '6px 8px' }}>Course</th>
+                          <th style={{ padding: '6px 8px' }}>Error Reason</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importReport.errors.map((err, idx) => (
+                          <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '6px 8px', fontWeight: 700, color: '#dc2626' }}>{err.row}</td>
+                            <td style={{ padding: '6px 8px' }}>{err.matricNumber}</td>
+                            <td style={{ padding: '6px 8px' }}>{err.courseCode}</td>
+                            <td style={{ padding: '6px 8px', color: '#b91c1c' }}>{err.message}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
           </form>
         </section>
       )}

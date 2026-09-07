@@ -32,6 +32,28 @@ export const signRefreshToken = (user, rememberMe = false) =>
     },
   );
 
+export const signPasswordResetToken = (user) =>
+  jwt.sign(
+    {
+      sub: user.id,
+      type: 'reset-password',
+      email: user.email,
+    },
+    accessTokenSecret,
+    {
+      expiresIn: process.env.JWT_RESET_EXPIRES_IN || '1h',
+    },
+  );
+
 export const verifyAccessToken = (token) => jwt.verify(token, accessTokenSecret);
 
 export const verifyRefreshToken = (token) => jwt.verify(token, refreshTokenSecret);
+
+export const verifyPasswordResetToken = (token) => {
+  const payload = jwt.verify(token, accessTokenSecret);
+  if (payload.type !== 'reset-password') {
+    throw new Error('Invalid reset token type.');
+  }
+  return payload;
+};
+

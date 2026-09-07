@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ApiClient } from '../auth/ApiClient';
 import { useAuth } from '../auth/useAuth';
+import { useToast } from '../context/useToast';
 
 export default function AdminContacts() {
+  const toast = useToast();
   const { getAccessToken, refreshAccessToken } = useAuth();
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -34,9 +36,11 @@ export default function AdminContacts() {
     try {
       await ApiClient.patch(`/admin/contacts/${msgId}/status`, { status }, {}, getAccessToken, refreshAccessToken);
       setNotice(`Status updated to ${status}.`);
+      toast.success(`Status updated to ${status}.`);
       loadMessages();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to update message status.');
     }
   };
 
@@ -47,11 +51,13 @@ export default function AdminContacts() {
     try {
       await ApiClient.post(`/admin/contacts/${selectedMessage.id}/reply`, { replyText }, {}, getAccessToken, refreshAccessToken);
       setNotice('Reply recorded and message marked resolved.');
+      toast.success('Reply recorded and message marked resolved.');
       setSelectedMessage(null);
       setReplyText('');
       loadMessages();
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to send reply.');
     } finally {
       setSubmitting(false);
     }

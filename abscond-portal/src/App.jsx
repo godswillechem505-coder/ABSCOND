@@ -13,6 +13,8 @@ import FaqsPage from "./pages/FaqsPage";
 import ContactPage from "./pages/ContactPage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import StudentProfilePage from "./pages/StudentProfilePage";
 import StudentCourseRegistration from "./pages/StudentCourseRegistration";
 import StudentResultsPage from "./pages/StudentResultsPage";
@@ -127,6 +129,9 @@ function App() {
 
 
         <Route path="login" element={<LoginPage />} />
+        <Route path="forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="reset-password" element={<ResetPasswordPage />} />
+        <Route path="reset-password/:token" element={<ResetPasswordPage />} />
 
         <Route element={<RequireStudentAuth />}>
           <Route path="portal" element={<PortalLayout />}>

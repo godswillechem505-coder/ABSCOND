@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ApiClient } from '../auth/ApiClient';
 import { useAuth } from '../auth/useAuth';
 import { TableSkeleton } from '../components/Skeleton';
+import { useToast } from '../context/useToast';
 
 const GRADING_LEGEND = [
   { grade: 'A', range: '70% - 100%', points: '5.0', remark: 'EXCELLENT' },
@@ -14,6 +15,7 @@ const GRADING_LEGEND = [
 
 export default function StudentResultsPage() {
   const { getAccessToken, refreshAccessToken } = useAuth();
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -35,10 +37,12 @@ export default function StudentResultsPage() {
         setResults(data.results || []);
         if (data.summary) setSummary(data.summary);
       })
-
-      .catch((err) => setError(err.message))
+      .catch((err) => {
+        setError(err.message);
+        toast.error(err.message || 'Failed to load examination results.');
+      })
       .finally(() => setLoading(false));
-  }, [getAccessToken, refreshAccessToken]);
+  }, [getAccessToken, refreshAccessToken, toast]);
 
   const filteredResults = results.filter((r) => {
     if (selectedSessionId === 'all') return true;
@@ -46,6 +50,7 @@ export default function StudentResultsPage() {
   });
 
   const handlePrintResults = () => {
+    toast.info('Preparing Statement of Results for print...', 'Print Assessment');
     window.print();
   };
 

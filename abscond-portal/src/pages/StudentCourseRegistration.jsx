@@ -21,6 +21,7 @@ export default function StudentCourseRegistration() {
   const [registeredCourses, setRegisteredCourses] = useState([]);
   const [selectedCourseIds, setSelectedCourseIds] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [prereqModalCourse, setPrereqModalCourse] = useState(null);
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -51,9 +52,19 @@ export default function StudentCourseRegistration() {
       .finally(() => setLoading(false));
   }, [getAccessToken, refreshAccessToken]);
 
-  const toggleCourseSelect = (id) => {
+  const toggleCourseSelect = (course) => {
+    // If course has unmet prerequisite, show warning modal and block selection
+    if (course.prerequisiteMet === false) {
+      setPrereqModalCourse(course);
+      toast.warning(
+        `Prerequisite requirement not met for ${course.code}. You must complete ${course.prerequisite?.code || 'the prerequisite'} first.`,
+        'Course Blocked'
+      );
+      return;
+    }
+
     setSelectedCourseIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+      prev.includes(course.id) ? prev.filter((item) => item !== course.id) : [...prev, course.id]
     );
   };
 
@@ -90,8 +101,10 @@ export default function StudentCourseRegistration() {
       setSelectedCourseIds([]);
       loadData();
     } catch (err) {
-      // Check if server returned a fee-hold error
-      if (err.feeHold || (err.message && err.message.includes('outstanding fee'))) {
+      if (err.prerequisiteBlocked || (err.message && err.message.toLowerCase().includes('prerequisite'))) {
+        toast.error(err.message, 'Prerequisite Blocked');
+        setError(err.message);
+      } else if (err.feeHold || (err.message && err.message.includes('outstanding fee'))) {
         setFeeHold({
           message: err.message,
           outstanding: err.outstanding,
@@ -219,18 +232,22 @@ export default function StudentCourseRegistration() {
               {availableCourses.map((c) => {
                 const isAlreadyRegistered = registeredCourseIds.includes(c.id);
                 const isSelected = selectedCourseIds.includes(c.id);
+                const isPrereqBlocked = c.prerequisiteMet === false;
 
                 return (
                   <div
                     key={c.id}
-                    className={`course-item-row ${isAlreadyRegistered ? 'registered' : ''} ${isSelected ? 'selected' : ''}`}
-                    onClick={() => !isAlreadyRegistered && windowOpen && toggleCourseSelect(c.id)}
+                    className={`course-item-row ${isAlreadyRegistered ? 'registered' : ''} ${isSelected ? 'selected' : ''} ${isPrereqBlocked ? 'prereq-blocked' : ''}`}
+                    onClick={() => {
+                      if (isAlreadyRegistered || !windowOpen) return;
+                      toggleCourseSelect(c);
+                    }}
                   >
                     <div className="course-checkbox-col">
                       <input
                         type="checkbox"
                         checked={isAlreadyRegistered || isSelected}
-                        disabled={isAlreadyRegistered || !windowOpen}
+                        disabled={isAlreadyRegistered || !windowOpen || isPrereqBlocked}
                         onChange={() => {}}
                       />
                     </div>
@@ -239,12 +256,39 @@ export default function StudentCourseRegistration() {
                         <strong>{c.code}</strong>
                         <span className="unit-badge">{c.units} Units</span>
                         <span className="semester-badge">Level {c.level} | Sem {c.semester}</span>
+                        {isPrereqBlocked && (
+                          <span className="prereq-blocked-badge" title="Prerequisite not completed">
+                            🔒 Prerequisite Required
+                          </span>
+                        )}
                       </div>
                       <h4>{c.title}</h4>
                       {c.prerequisite && (
-                        <p className="prereq-warning">
-                          ⚠️ Prerequisite: <strong>{c.prerequisite.code} - {c.prerequisite.title}</strong>
-                        </p>
+                        <div className={`prereq-indicator ${isPrereqBlocked ? 'blocked' : 'met'}`}>
+                          <span className="prereq-icon">{isPrereqBlocked ? '⚠️' : '✓'}</span>
+                          <span>
+                            Prerequisite: <strong>{c.prerequisite.code} - {c.prerequisite.title}</strong>
+                            {isPrereqBlocked && c.prerequisiteDetails && (
+                              <span className="prereq-status-note">
+                                {c.prerequisiteDetails.reason === 'failed'
+                                  ? ` (Previous Attempt: Grade ${c.prerequisiteDetails.grade}, ${c.prerequisiteDetails.score}%)`
+                                  : ' (Not Yet Passed)'}
+                              </span>
+                            )}
+                          </span>
+                          {isPrereqBlocked && (
+                            <button
+                              type="button"
+                              className="btn-view-prereq-details"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPrereqModalCourse(c);
+                              }}
+                            >
+                              View Requirement
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                     <div className="course-status-col">
@@ -252,6 +296,8 @@ export default function StudentCourseRegistration() {
                         <span className="status-pill active">REGISTERED</span>
                       ) : isSelected ? (
                         <span className="status-pill pending">SELECTED</span>
+                      ) : isPrereqBlocked ? (
+                        <span className="status-pill blocked">BLOCKED</span>
                       ) : (
                         <span className="status-pill">AVAILABLE</span>
                       )}
@@ -339,6 +385,103 @@ export default function StudentCourseRegistration() {
               </div>
             )}
           </section>
+        </div>
+      )}
+
+      {/* Prerequisite Warning Modal */}
+      {prereqModalCourse && (
+        <div
+          className="admin-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setPrereqModalCourse(null)}
+        >
+          <div className="admin-modal-card prereq-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="admin-modal-header" style={{ borderBottom: '1px solid #fed7aa', background: '#fffbeb' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '24px' }}>⚠️</span>
+                <div>
+                  <h2 style={{ margin: 0, color: '#9a3412', fontSize: '1.2rem' }}>
+                    Prerequisite Requirement Not Met
+                  </h2>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#c2410c' }}>
+                    Academic Enrollment Clearance Notice
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="admin-modal-close"
+                onClick={() => setPrereqModalCourse(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="admin-modal-body" style={{ padding: '24px' }}>
+              <div className="prereq-target-course-box">
+                <span className="prereq-box-label">Target Course You Attempted to Select:</span>
+                <div className="prereq-course-title-line">
+                  <strong>{prereqModalCourse.code}</strong> — {prereqModalCourse.title}
+                </div>
+                <div className="prereq-meta-tags">
+                  <span className="unit-badge">{prereqModalCourse.units} Units</span>
+                  <span className="semester-badge">Level {prereqModalCourse.level} | Sem {prereqModalCourse.semester}</span>
+                </div>
+              </div>
+
+              <div className="prereq-requirement-box">
+                <div className="prereq-box-header">
+                  <strong>Mandatory Prerequisite Course:</strong>
+                  <span className={`prereq-state-badge ${prereqModalCourse.prerequisiteDetails?.reason === 'failed' ? 'failed' : 'missing'}`}>
+                    {prereqModalCourse.prerequisiteDetails?.reason === 'failed'
+                      ? 'FAILED PREVIOUS ATTEMPT'
+                      : 'NOT YET TAKEN / PASSED'}
+                  </span>
+                </div>
+                <div className="prereq-course-title-line">
+                  <strong>{prereqModalCourse.prerequisite?.code}</strong> — {prereqModalCourse.prerequisite?.title}
+                </div>
+                {prereqModalCourse.prerequisiteDetails?.reason === 'failed' && (
+                  <div className="prereq-result-details">
+                    <p>
+                      <strong>Your Recorded Result:</strong> Grade{' '}
+                      <span className="badge-danger" style={{ fontWeight: 700, color: '#dc2626' }}>{prereqModalCourse.prerequisiteDetails.grade}</span>{' '}
+                      ({prereqModalCourse.prerequisiteDetails.score}%)
+                    </p>
+                    <p className="prereq-note-text">
+                      The minimum passing grade for this prerequisite is <strong>Grade E (40%)</strong>.
+                    </p>
+                  </div>
+                )}
+                {prereqModalCourse.prerequisiteDetails?.reason === 'not_taken' && (
+                  <div className="prereq-result-details">
+                    <p className="prereq-note-text">
+                      You have no recorded passing grade for <strong>{prereqModalCourse.prerequisite?.code}</strong>.
+                      Academic regulations require completion of this course before enrollment in {prereqModalCourse.code}.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="prereq-guidance-callout">
+                <p style={{ margin: 0 }}>
+                  💡 <strong>Next Steps:</strong> Register and achieve a passing score in{' '}
+                  <strong>{prereqModalCourse.prerequisite?.code}</strong> during its regular semester offering, or consult your Academic Advisor / Head of Department if you believe this is an evaluation discrepancy.
+                </p>
+              </div>
+            </div>
+
+            <div className="admin-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', padding: '16px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+              <button
+                type="button"
+                className="btn-green-arrow"
+                onClick={() => setPrereqModalCourse(null)}
+              >
+                Understood, Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
